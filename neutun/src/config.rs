@@ -9,63 +9,66 @@ const TLS_OFF_ENV: &'static str = "CTRL_TLS_OFF";
 
 const DEFAULT_HOST: &'static str = "neutun.dev";
 const DEFAULT_CONTROL_HOST: &'static str = "wormhole.neutun.dev";
-const DEFAULT_CONTROL_PORT: &'static str = "10001";
+const DEFAULT_CONTROL_PORT: &'static str = "5000";
 
 const SETTINGS_DIR: &'static str = ".neutun";
 const SECRET_KEY_FILE: &'static str = "key.token";
 
 /// Command line arguments
 #[derive(Debug, StructOpt)]
-#[structopt(
-    name = "neutun",
-    author = "Neutun Developers",
-    about = "Expose your local web server to the internet with a public url."
-)]
-struct Opts {
+pub struct Opts {
     /// A level of verbosity, and can be used multiple times
     #[structopt(short = "v", long = "verbose")]
-    verbose: bool,
+    pub verbose: bool,
 
     #[structopt(subcommand)]
-    command: Option<SubCommand>,
+    pub command: Option<SubCommand>,
 
     /// Sets an API authentication key to use for this tunnel
     #[structopt(short = "k", long = "key")]
-    key: Option<String>,
+    pub key: Option<String>,
 
     /// Specify a sub-domain for this tunnel
     #[structopt(short = "s", long = "subdomain")]
-    sub_domain: Option<String>,
+    pub sub_domain: Option<String>,
+
+    /// Specify the domain for this tunnel
+    #[structopt(short = "d", long = "domain")]
+    pub domain: Option<String>,
 
     /// Sets the HOST (i.e. localhost) to forward incoming tunnel traffic to
     #[structopt(long = "host", default_value = "localhost")]
-    local_host: String,
+    pub local_host: String,
 
     /// Sets the protocol for local forwarding (i.e. https://localhost) to forward incoming tunnel traffic to
     #[structopt(long = "use-tls", short = "t")]
-    use_tls: bool,
+    pub use_tls: bool,
 
     /// Sets the port to forward incoming tunnel traffic to on the target host
     #[structopt(short = "p", long = "port", default_value = "8000")]
-    port: u16,
+    pub port: u16,
 
     /// Sets the address of the local introspection dashboard
     #[structopt(long = "dashboard-port")]
-    dashboard_port: Option<u16>,
+    pub dashboard_port: Option<u16>,
 
     /// Allow listen to wildcard sub-domains
     #[structopt(short = "w", long = "wildcard")]
-    wildcard: bool,
+    pub wildcard: bool,
 }
 
 #[derive(Debug, StructOpt)]
-enum SubCommand {
+pub enum SubCommand {
     /// Store the API Authentication key
     SetAuth {
         /// Sets an API authentication key on disk for future use
         #[structopt(short = "k", long = "key")]
         key: String,
     },
+    /// List available domains on the server
+    Domains,
+    /// List currently taken subdomains/wildcards
+    TakenDomains,
 }
 
 /// Config
@@ -73,12 +76,14 @@ enum SubCommand {
 pub struct Config {
     pub client_id: ClientId,
     pub control_url: String,
+    pub control_api_url: String,
     pub use_tls: bool,
     pub host: String,
     pub local_host: String,
     pub local_port: u16,
     pub local_addr: SocketAddr,
     pub sub_domain: Option<String>,
+    pub domain: Option<String>,
     pub secret_key: Option<SecretKey>,
     pub control_tls_off: bool,
     pub first_run: bool,
@@ -116,6 +121,8 @@ impl Config {
                 eprintln!("Authentication key stored successfully!");
                 std::process::exit(0);
             }
+            Some(SubCommand::Domains) => (None, None), // Handled in main
+            Some(SubCommand::TakenDomains) => (None, None), // Handled in main
             None => {
                 let key = opts.key;
                 let sub_domain = opts.sub_domain;
@@ -142,6 +149,9 @@ impl Config {
             }
         };
 
+        // Note: For SubCommands like Domains/TakenDomains, we might not need local addr,
+        // but it doesn't hurt to parse it if we can, or just default safely if valid commands are used.
+        // However, `opts.local_host` has a default, so this should usually pass unless DNS fails.
         let local_addr = match (opts.local_host.as_str(), opts.port)
             .to_socket_addrs()
             .unwrap_or(vec![].into_iter())
@@ -167,7 +177,10 @@ impl Config {
         let port = env::var(PORT_ENV).unwrap_or(format!("{}", DEFAULT_CONTROL_PORT));
 
         let scheme = if tls_off { "ws" } else { "wss" };
+        let http_scheme = if tls_off { "http" } else { "https" };
+
         let control_url = format!("{}://{}:{}/wormhole", scheme, control_host, port);
+        let control_api_url = format!("{}://{}:{}", http_scheme, control_host, port);
 
         info!("Control Server URL: {}", &control_url);
 
@@ -176,10 +189,12 @@ impl Config {
             local_host: opts.local_host,
             use_tls: opts.use_tls,
             control_url,
+            control_api_url,
             host,
             local_port: opts.port,
             local_addr,
             sub_domain,
+            domain: opts.domain,
             dashboard_port: opts.dashboard_port.unwrap_or(0),
             verbose: opts.verbose,
             secret_key: secret_key.map(|s| SecretKey(s)),

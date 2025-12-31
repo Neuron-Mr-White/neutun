@@ -52,6 +52,17 @@ async fn main() {
 
     setup_panic!();
 
+    // Check for subcommand
+    let opts = structopt::StructOpt::from_args();
+    if let Opts { command: Some(SubCommand::Domains), .. } = opts {
+        fetch_and_print_domains(&config).await;
+        return;
+    }
+    if let Opts { command: Some(SubCommand::TakenDomains), .. } = opts {
+        fetch_and_print_taken_domains(&config).await;
+        return;
+    }
+
     update::check().await;
 
     let introspect_dash_addr = introspect::start_introspect_web_dashboard(config.clone());
@@ -105,6 +116,45 @@ async fn main() {
     }
 }
 
+async fn fetch_and_print_domains(config: &Config) {
+    let url = format!("{}/api/domains", config.control_api_url);
+    match reqwest::get(&url).await {
+        Ok(res) => {
+            if let Ok(domains) = res.json::<Vec<String>>().await {
+                println!("{}", "Available Domains:".green().bold());
+                for domain in domains {
+                    println!(" - {}", domain);
+                }
+            } else {
+                eprintln!("{}", "Failed to parse domains from server.".red());
+            }
+        },
+        Err(e) => {
+             eprintln!("{} {}", "Failed to fetch domains:".red(), e);
+        }
+    }
+}
+
+async fn fetch_and_print_taken_domains(config: &Config) {
+    let url = format!("{}/api/taken", config.control_api_url);
+    match reqwest::get(&url).await {
+        Ok(res) => {
+            if let Ok(taken) = res.json::<Vec<String>>().await {
+                println!("{}", "Taken Subdomains:".yellow().bold());
+                for t in taken {
+                    println!(" - {}", t);
+                }
+            } else {
+                 eprintln!("{}", "Failed to parse taken domains from server.".red());
+            }
+        },
+        Err(e) => {
+            eprintln!("{} {}", "Failed to fetch taken domains:".red(), e);
+        }
+    }
+}
+
+
 /// Setup the tunnel to our control server
 async fn run_wormhole(
     config: Config,
@@ -119,7 +169,14 @@ async fn run_wormhole(
         hostname,
     } = connect_to_wormhole(&config).await?;
 
-    interface.did_connect(&sub_domain, &hostname);
+    // Fetch taken domains for display
+    let taken_url = format!("{}/api/taken", config.control_api_url);
+    let taken_domains = reqwest::get(&taken_url).await.ok()
+        .and_then(|r| futures::executor::block_on(r.json::<Vec<String>>()).ok())
+        .map(|v| v.join(", "))
+        .unwrap_or_default();
+
+    interface.did_connect(&sub_domain, &hostname, &taken_domains);
 
     // split reading and writing
     let (mut ws_sink, mut ws_stream) = websocket.split();
@@ -195,6 +252,7 @@ async fn connect_to_wormhole(config: &Config) -> Result<Wormhole, Error> {
     let client_hello = match config.secret_key.clone() {
         Some(secret_key) => ClientHello::generate(
             config.sub_domain.clone(),
+            config.domain.clone(),
             ClientType::Auth { key: secret_key },
             config.wildcard,
         ),
@@ -203,7 +261,12 @@ async fn connect_to_wormhole(config: &Config) -> Result<Wormhole, Error> {
             if let Some(reconnect) = RECONNECT_TOKEN.lock().await.clone() {
                 ClientHello::reconnect(reconnect, config.wildcard)
             } else {
-                ClientHello::generate(config.sub_domain.clone(), ClientType::Anonymous, config.wildcard)
+                ClientHello::generate(
+                    config.sub_domain.clone(),
+                    config.domain.clone(),
+                    ClientType::Anonymous,
+                    config.wildcard
+                )
             }
         }
     };

@@ -9,6 +9,7 @@ use warp::filters::ws::{Message, WebSocket};
 pub struct ClientHandshake {
     pub id: ClientId,
     pub sub_domain: String,
+    pub domain: String,
     pub is_anonymous: bool,
     pub wildcard: bool,
 }
@@ -44,34 +45,35 @@ async fn auth_client(
         }
     };
 
+    // Determine the domain
+    let domain = match client_hello.domain {
+        Some(ref d) => {
+            if !CONFIG.allowed_hosts.contains(d) {
+                error!("invalid client hello: domain not allowed!");
+                let data = serde_json::to_vec(&ServerHello::InvalidSubDomain).unwrap_or_default(); // Reuse error or add new one? InvalidSubDomain fits loosely
+                let _ = websocket.send(Message::binary(data)).await;
+                return None;
+            }
+            d.clone()
+        },
+        None => {
+            if let Some(first) = CONFIG.allowed_hosts.first() {
+                first.clone()
+            } else {
+                 error!("no allowed hosts configured on server!");
+                 let data = serde_json::to_vec(&ServerHello::Error("Server misconfigured".into())).unwrap_or_default();
+                 let _ = websocket.send(Message::binary(data)).await;
+                 return None;
+            }
+        }
+    };
+
+
     let (auth_key, client_id, requested_sub_domain) = match client_hello.client_type {
         ClientType::Anonymous => {
             let data = serde_json::to_vec(&ServerHello::AuthFailed).unwrap_or_default();
             let _ = websocket.send(Message::binary(data)).await;
             return None;
-
-            // // determine the client and subdomain
-            // let (client_id, sub_domain) =
-            //     match (client_hello.reconnect_token, client_hello.sub_domain) {
-            //         (Some(token), _) => {
-            //             return handle_reconnect_token(token, websocket, client_hello.wildcard).await;
-            //         }
-            //         (None, Some(sd)) => (
-            //             ClientId::generate(),
-            //             ServerHello::prefixed_random_domain(&sd),
-            //         ),
-            //         (None, None) => (ClientId::generate(), ServerHello::random_domain()),
-            //     };
-
-            // return Some((
-            //     websocket,
-            //     ClientHandshake {
-            //         id: client_id,
-            //         sub_domain,
-            //         is_anonymous: true,
-            //         wildcard: client_hello.wildcard,
-            //     },
-            // ));
         }
         ClientType::Auth { key } => match client_hello.sub_domain {
             Some(requested_sub_domain) => {
@@ -79,6 +81,7 @@ async fn auth_client(
                 let (ws, sub_domain) = match sanitize_sub_domain_and_pre_validate(
                     websocket,
                     requested_sub_domain,
+                    &domain,
                     &client_id,
                     client_hello.wildcard,
                 )
@@ -93,28 +96,43 @@ async fn auth_client(
             }
             None => {
                 if let Some(token) = client_hello.reconnect_token {
-                    return handle_reconnect_token(token, websocket, client_hello.wildcard).await;
+                    return handle_reconnect_token(token, websocket, client_hello.wildcard, domain).await;
                 } else {
                     let sub_domain = ServerHello::random_domain();
                     let client_id = key.client_id();
+
+                    // Validate random domain too
+                     let (ws, sub_domain) = match sanitize_sub_domain_and_pre_validate(
+                        websocket,
+                        sub_domain,
+                        &domain,
+                        &client_id,
+                        client_hello.wildcard,
+                    )
+                    .await
+                    {
+                        Some(s) => s,
+                        None => return None,
+                    };
+                    websocket = ws;
+
                     (key, client_id, sub_domain)
                 }
             }
         },
     };
 
-    tracing::info!(requested_sub_domain=%requested_sub_domain, "will auth sub domain");
+    tracing::info!(requested_sub_domain=%requested_sub_domain, domain=%domain, "will auth sub domain");
 
     // next authenticate the sub-domain
+    // Note: Auth service currently just checks against key, doesn't seem to care about domain scope in the signature?
+    // Assuming auth is global or we are just checking availability.
     let sub_domain = match crate::AUTH_DB_SERVICE
         .auth_sub_domain(&auth_key.0, &requested_sub_domain)
         .await
     {
         Ok(AuthResult::Available) | Ok(AuthResult::ReservedByYou) => requested_sub_domain,
         Ok(AuthResult::ReservedByYouButDelinquent) | Ok(AuthResult::PaymentRequired) => {
-            // note: delinquent payments get a random suffix
-            // ServerHello::prefixed_random_domain(&requested_sub_domain)
-            // TODO: create free trial domain
             tracing::info!(requested_sub_domain=%requested_sub_domain, "payment required");
             let data = serde_json::to_vec(&ServerHello::AuthFailed).unwrap_or_default();
             let _ = websocket.send(Message::binary(data)).await;
@@ -133,13 +151,14 @@ async fn auth_client(
         }
     };
 
-    tracing::info!(subdomain=%sub_domain, "did auth sub_domain");
+    tracing::info!(subdomain=%sub_domain, domain=%domain, "did auth sub_domain");
 
     Some((
         websocket,
         ClientHandshake {
             id: client_id,
             sub_domain,
+            domain,
             is_anonymous: false,
             wildcard: client_hello.wildcard,
         },
@@ -151,6 +170,7 @@ async fn handle_reconnect_token(
     token: ReconnectToken,
     mut websocket: WebSocket,
     wildcard: bool,
+    domain: String,
 ) -> Option<(WebSocket, ClientHandshake)> {
     let payload = match ReconnectTokenPayload::verify(token, &CONFIG.master_sig_key) {
         Ok(payload) => payload,
@@ -169,7 +189,7 @@ async fn handle_reconnect_token(
 
     if wildcard {
         use crate::connected_clients::Connections;
-        if let Some(existing_wildcard) = Connections::find_wildcard() {
+        if let Some(existing_wildcard) = Connections::find_wildcard(&domain) {
              if &existing_wildcard.id != &payload.client_id {
                 error!("invalid client hello: wildcard in use!");
                 let data = serde_json::to_vec(&ServerHello::SubDomainInUse).unwrap_or_default();
@@ -184,6 +204,7 @@ async fn handle_reconnect_token(
         ClientHandshake {
             id: payload.client_id,
             sub_domain: payload.sub_domain,
+            domain,
             is_anonymous: true,
             wildcard,
         },
@@ -193,6 +214,7 @@ async fn handle_reconnect_token(
 async fn sanitize_sub_domain_and_pre_validate(
     mut websocket: WebSocket,
     requested_sub_domain: String,
+    domain: &str,
     client_id: &ClientId,
     wildcard: bool,
 ) -> Option<(WebSocket, String)> {
@@ -220,8 +242,12 @@ async fn sanitize_sub_domain_and_pre_validate(
     }
 
     // ensure this sub-domain isn't taken
+    let full_host = format!("{}.{}", sub_domain, domain);
+
     // check all instances
-    match crate::network::instance_for_host(&sub_domain).await {
+    // Note: instance_for_host checks Gossip network. We assume it propagates full hosts.
+    // If instance_for_host uses full host as key, this works.
+    match crate::network::instance_for_host(&full_host).await {
         Err(crate::network::Error::DoesNotServeHost) => {}
         Ok((_, existing_client)) => {
             if &existing_client != client_id {
@@ -238,7 +264,7 @@ async fn sanitize_sub_domain_and_pre_validate(
 
     if wildcard {
         use crate::connected_clients::Connections;
-        if let Some(existing_wildcard) = Connections::find_wildcard() {
+        if let Some(existing_wildcard) = Connections::find_wildcard(domain) {
              if &existing_wildcard.id != client_id {
                 error!("invalid client hello: wildcard in use!");
                 let data = serde_json::to_vec(&ServerHello::SubDomainInUse).unwrap_or_default();

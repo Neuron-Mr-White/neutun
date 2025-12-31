@@ -37,7 +37,7 @@ impl CliInterface {
         }
     }
 
-    pub fn did_connect(&self, sub_domain: &str, full_hostname: &str) {
+    pub fn did_connect(&self, sub_domain: &str, full_hostname: &str, taken_domains: &str) {
         self.spinner
             .finish_with_message("Success! Remote tunnel is now open.\n".green().as_ref());
 
@@ -69,6 +69,14 @@ impl CliInterface {
             vec![
                 "Forwarding traffic to".cell(),
                 forward_url
+                    .cell()
+                    .padding(Padding::builder().left(4).build())
+                    .justify(Justify::Left),
+            ],
+            vec![
+                "Taken domains".yellow().cell(),
+                taken_domains
+                    .yellow()
                     .cell()
                     .padding(Padding::builder().left(4).build())
                     .justify(Justify::Left),

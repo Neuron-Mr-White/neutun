@@ -48,12 +48,13 @@ pub async fn accept_connection(socket: TcpStream) {
     let host_no_port = host.split(":").next().unwrap_or(&host).to_string();
 
     if CONFIG.allowed_hosts.contains(&host_no_port) {
-        error!("serving hello world");
+        // error!("serving hello world");
         let _ = socket.write_all(HTTP_HELLO_WORLD_RESPONSE).await;
         return;
     }
-    let host = match validate_host_prefix(&host) {
-        Some(sub_domain) => sub_domain,
+
+    let (sub_domain, domain) = match validate_host_prefix(&host_no_port) {
+        Some(pair) => pair,
         None => {
             error!("invalid host specified");
             let _ = socket.write_all(HTTP_INVALID_HOST_RESPONSE).await;
@@ -62,21 +63,23 @@ pub async fn accept_connection(socket: TcpStream) {
     };
 
     // Special case -- we redirect this tcp connection to the control server
-    if host.as_str() == "wormhole" {
+    if sub_domain == "wormhole" {
         direct_to_control(socket).await;
         return;
     }
 
+    let full_host = format!("{}.{}", sub_domain, domain);
+
     // find the client listening for this host
-    let client = match Connections::find_by_host(&host) {
+    let client = match Connections::find_by_host(&full_host) {
         Some(client) => client.clone(),
         None => {
-            // try to find a wildcard client
-            if let Some(client) = Connections::find_wildcard() {
+            // try to find a wildcard client for this domain
+            if let Some(client) = Connections::find_wildcard(&domain) {
                  client
             } else {
                 // check other instances that may be serving this host
-                match network::instance_for_host(&host).await {
+                match network::instance_for_host(&full_host).await {
                     Ok((instance, _)) => {
                         network::proxy_stream(instance, socket).await;
                         return;
@@ -128,19 +131,9 @@ pub async fn accept_connection(socket: TcpStream) {
     );
 }
 
-fn validate_host_prefix(host: &str) -> Option<String> {
-    let url = format!("http://{}", host);
-
-    let host = match url::Url::parse(&url)
-        .map(|u| u.host().map(|h| h.to_owned()))
-        .unwrap_or(None)
-    {
-        Some(domain) => domain.to_string(),
-        None => {
-            error!("invalid host header");
-            return None;
-        }
-    };
+// Returns (subdomain, domain)
+fn validate_host_prefix(host: &str) -> Option<(String, String)> {
+    // host is already host_no_port from caller
 
     for allowed in &CONFIG.allowed_hosts {
         if host.ends_with(allowed) {
@@ -150,7 +143,7 @@ fn validate_host_prefix(host: &str) -> Option<String> {
             // ensure it's a subdomain (has a dot separator)
             if len_host > len_suffix && host.as_bytes()[len_host - len_suffix - 1] == b'.' {
                 let prefix = &host[..len_host - len_suffix - 1];
-                return Some(prefix.to_string());
+                return Some((prefix.to_string(), allowed.clone()));
             }
         }
     }
