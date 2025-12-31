@@ -3,40 +3,44 @@ name: Build and Release
 on:
   push:
     tags:
-      - '*'
+      - "*"
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-
     strategy:
       matrix:
         os: [ubuntu-latest, macOS-latest]
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Cache cargo registry
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Cache cargo index
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Cache cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions/checkout@v2
       - name: Build Client
         run: cargo build --release --bin neutun --verbose
-      - name: Compress
-        run: tar -czvf neutun-${{ matrix.os }}.tar.gz target/release/neutun
+
       - name: Upload Client Binary
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v4
         with:
           name: neutun-${{ matrix.os }}
           path: target/release/neutun
@@ -44,27 +48,31 @@ jobs:
   build_win:
     runs-on: windows-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Cache cargo registry
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Cache cargo index
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Cache cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions/checkout@v2
       - name: Build Client
         run: cargo build --release --bin neutun --verbose
+
       - name: Upload Client Binary
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v4
         with:
           name: neutun-windows-latest.exe
           path: target/release/neutun.exe
@@ -75,38 +83,42 @@ jobs:
     steps:
       - name: Get the version
         id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF#refs/tags/}    
-        
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
       - name: Download macOS
-        uses: actions/download-artifact@v1
+        uses: actions/download-artifact@v4
         with:
           name: neutun-macOS-latest
           path: macOS/neutun/${{ steps.get_version.outputs.VERSION }}/bin/
 
       - name: Download ubuntu
-        uses: actions/download-artifact@v1
+        uses: actions/download-artifact@v4
         with:
           name: neutun-ubuntu-latest
           path: linux/
 
       - name: Download windows
-        uses: actions/download-artifact@v1
+        uses: actions/download-artifact@v4
         with:
           name: neutun-windows-latest.exe
           path: windows/
 
-      - name: Compress
+      - name: Compress and Prepare
         run: |
           chmod +x macOS/neutun/${{ steps.get_version.outputs.VERSION }}/bin/neutun
           chmod +x linux/neutun
+
           export TAG="${{ steps.get_version.outputs.VERSION }}"
+
           cp windows/neutun.exe neutun-windows.exe
+
           tar -C macOS/ -czvf "neutun-$TAG.catalina.bottle.tar.gz" neutun/${{ steps.get_version.outputs.VERSION }}/bin/neutun
           cp "neutun-$TAG.catalina.bottle.tar.gz" "neutun-$TAG.big_sur.bottle.tar.gz"
+
           tar -C linux/ -czvf neutun-linux.tar.gz neutun
 
       - name: Create Release
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@v1.14.0
         with:
           allowUpdates: true
           artifacts: "neutun-${{ steps.get_version.outputs.VERSION }}.big_sur.bottle.tar.gz,neutun-${{ steps.get_version.outputs.VERSION }}.catalina.bottle.tar.gz,neutun-linux.tar.gz,neutun-windows.exe"
