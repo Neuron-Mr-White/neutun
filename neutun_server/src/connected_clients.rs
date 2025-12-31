@@ -7,6 +7,7 @@ pub struct ConnectedClient {
     pub id: ClientId,
     pub host: String,
     pub is_anonymous: bool,
+    pub wildcard: bool,
     pub tx: UnboundedSender<ControlPacket>,
 }
 

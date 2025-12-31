@@ -58,12 +58,6 @@ async fn main() {
     control_server::spawn(([0, 0, 0, 0], CONFIG.control_port));
     info!("started neutun server on 0.0.0.0:{}", CONFIG.control_port);
 
-    network::spawn(([0, 0, 0, 0, 0, 0, 0, 0], CONFIG.internal_network_port));
-    info!(
-        "start network service on [::]:{}",
-        CONFIG.internal_network_port
-    );
-
     let listen_addr = format!("[::]:{}", CONFIG.remote_port);
     info!("listening on: {}", &listen_addr);
 

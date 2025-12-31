@@ -52,6 +52,10 @@ struct Opts {
     /// Sets the address of the local introspection dashboard
     #[structopt(long = "dashboard-port")]
     dashboard_port: Option<u16>,
+
+    /// Allow listen to wildcard sub-domains
+    #[structopt(short = "w", long = "wildcard")]
+    wildcard: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -80,6 +84,7 @@ pub struct Config {
     pub first_run: bool,
     pub dashboard_port: u16,
     pub verbose: bool,
+    pub wildcard: bool,
 }
 
 impl Config {
@@ -180,6 +185,7 @@ impl Config {
             secret_key: secret_key.map(|s| SecretKey(s)),
             control_tls_off: tls_off,
             first_run: true,
+            wildcard: opts.wildcard,
         })
     }
 

@@ -71,21 +71,26 @@ pub async fn accept_connection(socket: TcpStream) {
     let client = match Connections::find_by_host(&host) {
         Some(client) => client.clone(),
         None => {
-            // check other instances that may be serving this host
-            match network::instance_for_host(&host).await {
-                Ok((instance, _)) => {
-                    network::proxy_stream(instance, socket).await;
-                    return;
-                }
-                Err(network::Error::DoesNotServeHost) => {
-                    error!(%host, "no tunnel found");
-                    let _ = socket.write_all(HTTP_NOT_FOUND_RESPONSE).await;
-                    return;
-                }
-                Err(error) => {
-                    error!(%host, ?error, "failed to find instance");
-                    let _ = socket.write_all(HTTP_ERROR_LOCATING_HOST_RESPONSE).await;
-                    return;
+            // try to find a wildcard client
+            if let Some(client) = find_wildcard_client(&host) {
+                 client
+            } else {
+                // check other instances that may be serving this host
+                match network::instance_for_host(&host).await {
+                    Ok((instance, _)) => {
+                        network::proxy_stream(instance, socket).await;
+                        return;
+                    }
+                    Err(network::Error::DoesNotServeHost) => {
+                        error!(%host, "no tunnel found");
+                        let _ = socket.write_all(HTTP_NOT_FOUND_RESPONSE).await;
+                        return;
+                    }
+                    Err(error) => {
+                        error!(%host, ?error, "failed to find instance");
+                        let _ = socket.write_all(HTTP_ERROR_LOCATING_HOST_RESPONSE).await;
+                        return;
+                    }
                 }
             }
         }
@@ -146,6 +151,29 @@ fn validate_host_prefix(host: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+fn find_wildcard_client(subdomain_prefix: &str) -> Option<ConnectedClient> {
+    // subdomain_prefix is already the extracted subdomain part (e.g. "bar.foo" from "bar.foo.neutun.dev")
+    // We want to check if any parent part is a registered client with wildcard enabled.
+
+    let parts: Vec<&str> = subdomain_prefix.split('.').collect();
+
+    // Iterate to find parent domains
+    // If parts = ["bar", "foo"], we check:
+    // 1. "bar.foo" (Exact match handled before this function, but safe to check)
+    // 2. "foo" -> if client "foo" exists and has wildcard=true, return it.
+
+    for i in 0..parts.len() {
+        let sub = parts[i..].join(".");
+        if let Some(client) = Connections::find_by_host(&sub) {
+            if client.wildcard {
+                return Some(client);
+            }
+        }
+    }
+
+    None
 }
 
 /// Response Constants

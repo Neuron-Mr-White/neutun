@@ -1,7 +1,6 @@
 use crate::auth::SigKey;
 use std::net::IpAddr;
 use std::str::FromStr;
-use uuid::Uuid;
 
 /// Global service configuration
 pub struct Config {
@@ -25,12 +24,6 @@ pub struct Config {
 
     /// our signature key
     pub master_sig_key: SigKey,
-
-    /// Instance DNS discovery domain for gossip protocol
-    pub gossip_dns_host: Option<String>,
-
-    /// The identifier for this instance of the server
-    pub instance_id: String,
 
     /// Blocked IP addresses
     pub blocked_ips: Vec<IpAddr>,
@@ -59,11 +52,6 @@ impl Config {
             SigKey::generate()
         };
 
-        let gossip_dns_host = std::env::var("FLY_APP_NAME")
-            .map(|app_name| format!("global.{}.internal", app_name))
-            .ok();
-
-        let instance_id = std::env::var("FLY_ALLOC_ID").unwrap_or(Uuid::new_v4().to_string());
         let blocked_ips = std::env::var("BLOCKED_IPS")
             .map(|s| {
                 s.split(",")
@@ -84,8 +72,6 @@ impl Config {
             remote_port: get_port("PORT", 8080),
             internal_network_port: get_port("NET_PORT", 6000),
             master_sig_key,
-            gossip_dns_host,
-            instance_id,
             blocked_ips,
             tunnel_host,
             master_key,

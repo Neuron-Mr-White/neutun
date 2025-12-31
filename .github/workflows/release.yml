@@ -32,14 +32,14 @@ jobs:
 
       - uses: actions/checkout@v2
       - name: Build Client
-        run: cargo build --release --bin tunnelto --verbose
+        run: cargo build --release --bin neutun --verbose
       - name: Compress
-        run: tar -czvf tunnelto-${{ matrix.os }}.tar.gz target/release/tunnelto
+        run: tar -czvf neutun-${{ matrix.os }}.tar.gz target/release/neutun
       - name: Upload Client Binary
         uses: actions/upload-artifact@v1
         with:
-          name: tunnelto-${{ matrix.os }}
-          path: target/release/tunnelto
+          name: neutun-${{ matrix.os }}
+          path: target/release/neutun
 
   build_win:
     runs-on: windows-latest
@@ -62,12 +62,12 @@ jobs:
 
       - uses: actions/checkout@v2
       - name: Build Client
-        run: cargo build --release --bin tunnelto --verbose
+        run: cargo build --release --bin neutun --verbose
       - name: Upload Client Binary
         uses: actions/upload-artifact@v1
         with:
-          name: tunnelto-windows-latest.exe
-          path: target/release/tunnelto.exe
+          name: neutun-windows-latest.exe
+          path: target/release/neutun.exe
 
   publish:
     needs: [build, build_win]
@@ -80,34 +80,34 @@ jobs:
       - name: Download macOS
         uses: actions/download-artifact@v1
         with:
-          name: tunnelto-macOS-latest
-          path: macOS/tunnelto/${{ steps.get_version.outputs.VERSION }}/bin/
+          name: neutun-macOS-latest
+          path: macOS/neutun/${{ steps.get_version.outputs.VERSION }}/bin/
 
       - name: Download ubuntu
         uses: actions/download-artifact@v1
         with:
-          name: tunnelto-ubuntu-latest
+          name: neutun-ubuntu-latest
           path: linux/
 
       - name: Download windows
         uses: actions/download-artifact@v1
         with:
-          name: tunnelto-windows-latest.exe
+          name: neutun-windows-latest.exe
           path: windows/
 
       - name: Compress
         run: |
-          chmod +x macOS/tunnelto/${{ steps.get_version.outputs.VERSION }}/bin/tunnelto
-          chmod +x linux/tunnelto
+          chmod +x macOS/neutun/${{ steps.get_version.outputs.VERSION }}/bin/neutun
+          chmod +x linux/neutun
           export TAG="${{ steps.get_version.outputs.VERSION }}"
-          cp windows/tunnelto.exe tunnelto-windows.exe
-          tar -C macOS/ -czvf "tunnelto-$TAG.catalina.bottle.tar.gz" tunnelto/${{ steps.get_version.outputs.VERSION }}/bin/tunnelto
-          cp "tunnelto-$TAG.catalina.bottle.tar.gz" "tunnelto-$TAG.big_sur.bottle.tar.gz"
-          tar -C linux/ -czvf tunnelto-linux.tar.gz tunnelto
+          cp windows/neutun.exe neutun-windows.exe
+          tar -C macOS/ -czvf "neutun-$TAG.catalina.bottle.tar.gz" neutun/${{ steps.get_version.outputs.VERSION }}/bin/neutun
+          cp "neutun-$TAG.catalina.bottle.tar.gz" "neutun-$TAG.big_sur.bottle.tar.gz"
+          tar -C linux/ -czvf neutun-linux.tar.gz neutun
 
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          artifacts: "tunnelto-${{ steps.get_version.outputs.VERSION }}.big_sur.bottle.tar.gz,tunnelto-${{ steps.get_version.outputs.VERSION }}.catalina.bottle.tar.gz,tunnelto-linux.tar.gz,tunnelto-windows.exe"
+          artifacts: "neutun-${{ steps.get_version.outputs.VERSION }}.big_sur.bottle.tar.gz,neutun-${{ steps.get_version.outputs.VERSION }}.catalina.bottle.tar.gz,neutun-linux.tar.gz,neutun-windows.exe"
           token: ${{ secrets.GITHUB_TOKEN }}
