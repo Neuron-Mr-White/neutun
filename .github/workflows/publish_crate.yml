@@ -2,7 +2,7 @@ name: Publish to crates.io
 on:
   push:
     tags:
-      - '*'
+      - "*"
 
   workflow_dispatch:
 
@@ -11,13 +11,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
-      
+      - uses: actions/checkout@v4
+
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
-          
+
       - run: cd neutun_lib && cargo publish --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
       - run: cd neutun && cargo publish --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
-
