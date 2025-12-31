@@ -1,7 +1,7 @@
 # Neutun
 
 Neutun is a private-use tool to expose your locally running web server via a public URL.
-It is a fork of `neutun`, modified for simplified private self-hosting.
+It is a fork of `tunnelto`, modified for simplified private self-hosting.
 The name "Neutun" comes from "tun" which stands for tunnel.
 
 ## 1. Hosting the Server (VPS Guide)
