@@ -142,15 +142,20 @@ fn validate_host_prefix(host: &str) -> Option<String> {
         }
     };
 
-    let domain_segments = host.split(".").collect::<Vec<&str>>();
-    let prefix = &domain_segments[0];
-    let remaining = &domain_segments[1..].join(".");
+    for allowed in &CONFIG.allowed_hosts {
+        if host.ends_with(allowed) {
+            let len_suffix = allowed.len();
+            let len_host = host.len();
 
-    if CONFIG.allowed_hosts.contains(remaining) {
-        Some(prefix.to_string())
-    } else {
-        None
+            // ensure it's a subdomain (has a dot separator)
+            if len_host > len_suffix && host.as_bytes()[len_host - len_suffix - 1] == b'.' {
+                let prefix = &host[..len_host - len_suffix - 1];
+                return Some(prefix.to_string());
+            }
+        }
     }
+
+    None
 }
 
 fn find_wildcard_client(subdomain_prefix: &str) -> Option<ConnectedClient> {
