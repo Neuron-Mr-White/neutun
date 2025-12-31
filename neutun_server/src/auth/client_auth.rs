@@ -50,7 +50,7 @@ async fn auth_client(
         Some(ref d) => {
             if !CONFIG.allowed_hosts.contains(d) {
                 error!("invalid client hello: domain not allowed!");
-                let data = serde_json::to_vec(&ServerHello::InvalidSubDomain).unwrap_or_default(); // Reuse error or add new one? InvalidSubDomain fits loosely
+                let data = serde_json::to_vec(&ServerHello::InvalidSubDomain).unwrap_or_default();
                 let _ = websocket.send(Message::binary(data)).await;
                 return None;
             }
@@ -77,7 +77,8 @@ async fn auth_client(
         }
         ClientType::Auth { key } => match client_hello.sub_domain {
             Some(requested_sub_domain) => {
-                let client_id = key.client_id();
+                // Generate a random Session ID for this connection
+                let client_id = ClientId::generate();
                 let (ws, sub_domain) = match sanitize_sub_domain_and_pre_validate(
                     websocket,
                     requested_sub_domain,
@@ -99,7 +100,7 @@ async fn auth_client(
                     return handle_reconnect_token(token, websocket, client_hello.wildcard, domain).await;
                 } else {
                     let sub_domain = ServerHello::random_domain();
-                    let client_id = key.client_id();
+                    let client_id = ClientId::generate();
 
                     // Validate random domain too
                      let (ws, sub_domain) = match sanitize_sub_domain_and_pre_validate(
@@ -125,8 +126,7 @@ async fn auth_client(
     tracing::info!(requested_sub_domain=%requested_sub_domain, domain=%domain, "will auth sub domain");
 
     // next authenticate the sub-domain
-    // Note: Auth service currently just checks against key, doesn't seem to care about domain scope in the signature?
-    // Assuming auth is global or we are just checking availability.
+    // Note: Auth service currently just checks against key.
     let sub_domain = match crate::AUTH_DB_SERVICE
         .auth_sub_domain(&auth_key.0, &requested_sub_domain)
         .await
@@ -244,9 +244,19 @@ async fn sanitize_sub_domain_and_pre_validate(
     // ensure this sub-domain isn't taken
     let full_host = format!("{}.{}", sub_domain, domain);
 
-    // check all instances
-    // Note: instance_for_host checks Gossip network. We assume it propagates full hosts.
-    // If instance_for_host uses full host as key, this works.
+    // Check locally for existing client
+    if crate::connected_clients::Connections::find_by_host(&full_host).is_some() {
+        // Since we generate random IDs for every connection, we can't easily check for "same session reconnect" here
+        // without comparing account IDs. But "same session reconnect" is usually handled by Reconnect Tokens.
+        // For new connections, if it's taken, it's taken.
+        // Exception: If the existing client is dead? TCP keepalives should handle that.
+        error!("invalid client hello: requested sub domain in use already!");
+        let data = serde_json::to_vec(&ServerHello::SubDomainInUse).unwrap_or_default();
+        let _ = websocket.send(Message::binary(data)).await;
+        return None;
+    }
+
+    // check all instances (Remote Gossip - currently stubbed)
     match crate::network::instance_for_host(&full_host).await {
         Err(crate::network::Error::DoesNotServeHost) => {}
         Ok((_, existing_client)) => {

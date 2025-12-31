@@ -169,7 +169,9 @@ impl Config {
         };
 
         // get the host url
-        let tls_off = env::var(TLS_OFF_ENV).is_ok();
+        let tls_off = env::var(TLS_OFF_ENV)
+            .map(|v| v == "1" || v.to_lowercase() == "true" || v.to_lowercase() == "on")
+            .unwrap_or(false);
         let host = env::var(HOST_ENV).unwrap_or(format!("{}", DEFAULT_HOST));
 
         let control_host = env::var(HOST_ENV).unwrap_or(format!("{}", DEFAULT_CONTROL_HOST));
