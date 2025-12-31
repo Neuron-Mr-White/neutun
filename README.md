@@ -76,10 +76,6 @@ sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin 
     # Already added by the command above:
     # MASTER_API_KEY=...
 
-    # The base domain for your tunnels (e.g., example.com)
-    # This is used for generating the subdomain URL shown to the client.
-    TUNNEL_HOST=<YOUR_DOMAIN>
-
     # Comma-separated list of allowed host domains (e.g., example.com)
     # If the incoming Host header matches one of these exactly, the server returns "Hello World".
     # If the Host header is a subdomain of one of these, it routes to a tunnel.
@@ -96,7 +92,6 @@ sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin 
     | Variable | Description | Default |
     | :--- | :--- | :--- |
     | `ALLOWED_HOSTS` | Comma-separated list of domains allowed for tunneling. If an exact match, serves "Hello World". | *(Required)* |
-    | `TUNNEL_HOST` | The base domain used for constructing tunnel URLs in the handshake. | `neutun.dev` |
     | `MASTER_API_KEY` | The secret key for client authentication. | *(Required)* |
     | `PORT` | The public HTTP port for serving tunnel traffic. | `8080` |
     | `CTRL_PORT` | The port for the control server (WebSockets). | `5000` |
@@ -256,40 +251,78 @@ To serve your tunnels over HTTPS (port 443) and standard HTTP (port 80) without 
 
 The `neutun` client connects to the server and tunnels traffic from your local machine.
 
+### Installation
+
+There are three ways to install the client: using Cargo, downloading a pre-compiled binary, or building from source.
+
+#### Option 1: Install via Cargo
+
+If you have Rust installed, you can install the client directly from crates.io:
+
+```bash
+cargo install neutun
+```
+
+*Note: The server must be hosted manually using Docker or built from source, as `neutun_server` is not published to crates.io.*
+
+#### Option 2: Pre-compiled Binaries
+
+Download the latest release for your operating system from the [Releases Page](https://github.com/Neuron-Mr-White/neutun/releases/tag/v1.0.3).
+
+**Adding to PATH:**
+
+To run `neutun` from any terminal, you should add it to your system's PATH.
+
+*   **Linux / macOS:**
+    1.  Download and extract the archive (e.g., `neutun-linux.tar.gz` or `neutun-<version>.bottle.tar.gz`).
+    2.  Move the binary to `/usr/local/bin`:
+        ```bash
+        sudo mv neutun /usr/local/bin/
+        sudo chmod +x /usr/local/bin/neutun
+        ```
+    3.  Verify installation: `neutun --version`
+
+*   **Windows:**
+    1.  Download `neutun-windows.exe`.
+    2.  Create a folder for your command-line tools (e.g., `C:\Tools`) and move `neutun-windows.exe` there. Rename it to `neutun.exe` for convenience.
+    3.  Search for "Edit the system environment variables" in the Start menu.
+    4.  Click "Environment Variables", then find the `Path` variable under "System variables" (or "User variables") and click "Edit".
+    5.  Click "New" and add the path to your folder (e.g., `C:\Tools`).
+    6.  Click OK to save. Open a new Command Prompt or PowerShell and type `neutun --version`.
+
+#### Option 3: Build from Source
+
+```bash
+git clone https://github.com/Neuron-Mr-White/neutun.git
+cd neutun
+cargo build --release --bin neutun
+# Binary is at ./target/release/neutun
+```
+
 ### Usage
 
-1.  **Download or Build the Client:**
-    You can build it from source:
-    ```bash
-    cargo build --release --bin neutun
-    # Binary is at ./target/release/neutun
-    ```
+You need to tell the client where your server is.
 
-2.  **Run the Client:**
+```bash
+# Point to your self-hosted server
+export CTRL_HOST="ws.<YOUR_DOMAIN>"  # e.g., ws.example.com (if using the Nginx config above)
+# OR if connecting directly without Nginx proxy for control:
+# export CTRL_HOST="<YOUR_DOMAIN>"
+# export CTRL_PORT=5000
 
-    You need to tell the client where your server is.
+export CTRL_TLS_OFF=0                # Set to 0 if using HTTPS/WSS (via Nginx), 1 if plain HTTP/WS
 
-    ```bash
-    # Point to your self-hosted server
-    export CTRL_HOST="ws.<YOUR_DOMAIN>"  # e.g., ws.example.com (if using the Nginx config above)
-    # OR if connecting directly without Nginx proxy for control:
-    # export CTRL_HOST="<YOUR_DOMAIN>"
-    # export CTRL_PORT=5000
-
-    export CTRL_TLS_OFF=0                # Set to 0 if using HTTPS/WSS (via Nginx), 1 if plain HTTP/WS
-
-    # Run the client
-    # -p: Local port to expose (e.g., your web app running on 8000)
-    # -k: The MASTER_API_KEY you generated on the server
-    # -s: Desired subdomain
-    ./neutun -p 8000 -k <YOUR_MASTER_API_KEY> -s myservice
-    ```
+# Run the client
+# -p: Local port to expose (e.g., your web app running on 8000)
+# -k: The MASTER_API_KEY you generated on the server
+# -s: Desired subdomain
+neutun -p 8000 -k <YOUR_MASTER_API_KEY> -s myservice
+```
 
 ### Client Help
 ```
 neutun 0.1.19
-Neutun Developers
-Expose your local web server to the internet with a public url.
+Command line arguments
 
 USAGE:
     neutun [FLAGS] [OPTIONS] [SUBCOMMAND]
@@ -304,6 +337,7 @@ FLAGS:
 
 OPTIONS:
         --dashboard-port <dashboard-port>    Sets the address of the local introspection dashboard
+    -d, --domain <domain>                    Specify the domain for this tunnel
     -k, --key <key>                          Sets an API authentication key to use for this tunnel
         --host <local-host>                  Sets the HOST (i.e. localhost) to forward incoming tunnel traffic to
                                              [default: localhost]
@@ -312,8 +346,10 @@ OPTIONS:
     -s, --subdomain <sub-domain>             Specify a sub-domain for this tunnel
 
 SUBCOMMANDS:
-    help        Prints this message or the help of the given subcommand(s)
-    set-auth    Store the API Authentication key
+    domains          List available domains on the server
+    help             Prints this message or the help of the given subcommand(s)
+    set-auth         Store the API Authentication key
+    taken-domains    List currently taken subdomains/wildcards
 ```
 
 ### Subdomains
