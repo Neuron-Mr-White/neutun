@@ -72,7 +72,7 @@ pub async fn accept_connection(socket: TcpStream) {
         Some(client) => client.clone(),
         None => {
             // try to find a wildcard client
-            if let Some(client) = find_wildcard_client(&host) {
+            if let Some(client) = Connections::find_wildcard() {
                  client
             } else {
                 // check other instances that may be serving this host
@@ -158,28 +158,6 @@ fn validate_host_prefix(host: &str) -> Option<String> {
     None
 }
 
-fn find_wildcard_client(subdomain_prefix: &str) -> Option<ConnectedClient> {
-    // subdomain_prefix is already the extracted subdomain part (e.g. "bar.foo" from "bar.foo.neutun.dev")
-    // We want to check if any parent part is a registered client with wildcard enabled.
-
-    let parts: Vec<&str> = subdomain_prefix.split('.').collect();
-
-    // Iterate to find parent domains
-    // If parts = ["bar", "foo"], we check:
-    // 1. "bar.foo" (Exact match handled before this function, but safe to check)
-    // 2. "foo" -> if client "foo" exists and has wildcard=true, return it.
-
-    for i in 0..parts.len() {
-        let sub = parts[i..].join(".");
-        if let Some(client) = Connections::find_by_host(&sub) {
-            if client.wildcard {
-                return Some(client);
-            }
-        }
-    }
-
-    None
-}
 
 /// Response Constants
 const HTTP_HELLO_WORLD_RESPONSE: &'static [u8] =

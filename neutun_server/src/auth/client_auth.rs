@@ -80,6 +80,7 @@ async fn auth_client(
                     websocket,
                     requested_sub_domain,
                     &client_id,
+                    client_hello.wildcard,
                 )
                 .await
                 {
@@ -166,6 +167,18 @@ async fn handle_reconnect_token(
         "accepting reconnect token from client",
     );
 
+    if wildcard {
+        use crate::connected_clients::Connections;
+        if let Some(existing_wildcard) = Connections::find_wildcard() {
+             if &existing_wildcard.id != &payload.client_id {
+                error!("invalid client hello: wildcard in use!");
+                let data = serde_json::to_vec(&ServerHello::SubDomainInUse).unwrap_or_default();
+                let _ = websocket.send(Message::binary(data)).await;
+                return None;
+             }
+        }
+    }
+
     Some((
         websocket,
         ClientHandshake {
@@ -181,6 +194,7 @@ async fn sanitize_sub_domain_and_pre_validate(
     mut websocket: WebSocket,
     requested_sub_domain: String,
     client_id: &ClientId,
+    wildcard: bool,
 ) -> Option<(WebSocket, String)> {
     // ignore uppercase
     let sub_domain = requested_sub_domain.to_lowercase();
@@ -219,6 +233,18 @@ async fn sanitize_sub_domain_and_pre_validate(
         }
         Err(e) => {
             tracing::debug!("Got error checking instances: {:?}", e);
+        }
+    }
+
+    if wildcard {
+        use crate::connected_clients::Connections;
+        if let Some(existing_wildcard) = Connections::find_wildcard() {
+             if &existing_wildcard.id != client_id {
+                error!("invalid client hello: wildcard in use!");
+                let data = serde_json::to_vec(&ServerHello::SubDomainInUse).unwrap_or_default();
+                let _ = websocket.send(Message::binary(data)).await;
+                return None;
+             }
         }
     }
 

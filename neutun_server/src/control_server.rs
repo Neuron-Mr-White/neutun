@@ -141,7 +141,7 @@ async fn try_client_handshake(websocket: WebSocket) -> Option<(WebSocket, Client
 
     // Send server hello success
     let hostname = if client_handshake.wildcard {
-        format!("*.{}.{}", &client_handshake.sub_domain, CONFIG.tunnel_host)
+        format!("*.{}", CONFIG.tunnel_host)
     } else {
         format!("{}.{}", &client_handshake.sub_domain, CONFIG.tunnel_host)
     };

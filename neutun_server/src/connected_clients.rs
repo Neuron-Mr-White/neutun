@@ -81,6 +81,15 @@ impl Connections {
         CONNECTIONS.hosts.get(host).map(|c| c.value().clone())
     }
 
+    pub fn find_wildcard() -> Option<ConnectedClient> {
+        for entry in CONNECTIONS.clients.iter() {
+            if entry.value().wildcard {
+                return Some(entry.value().clone());
+            }
+        }
+        None
+    }
+
     pub fn add(client: ConnectedClient) {
         CONNECTIONS
             .clients
