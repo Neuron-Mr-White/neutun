@@ -28,9 +28,6 @@ pub struct Config {
     /// Blocked IP addresses
     pub blocked_ips: Vec<IpAddr>,
 
-    /// The host on which we create tunnels on
-    pub tunnel_host: String,
-
     /// Master API Key for authentication
     pub master_key: Option<String>,
 }
@@ -61,8 +58,6 @@ impl Config {
             })
             .unwrap_or(vec![]);
 
-        let tunnel_host = std::env::var("TUNNEL_HOST").unwrap_or("neutun.dev".to_string());
-
         let master_key = std::env::var("MASTER_API_KEY").ok().or_else(|| std::env::var("NEUTUN_MASTER_KEY").ok());
 
         Config {
@@ -73,7 +68,6 @@ impl Config {
             internal_network_port: get_port("NET_PORT", 6000),
             master_sig_key,
             blocked_ips,
-            tunnel_host,
             master_key,
         }
     }

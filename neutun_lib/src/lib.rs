@@ -66,6 +66,7 @@ pub struct ClientHello {
     /// deprecated: just send some garbage
     id: ClientId,
     pub sub_domain: Option<String>,
+    pub domain: Option<String>,
     pub client_type: ClientType,
     pub reconnect_token: Option<ReconnectToken>,
     #[serde(default)]
@@ -73,11 +74,12 @@ pub struct ClientHello {
 }
 
 impl ClientHello {
-    pub fn generate(sub_domain: Option<String>, typ: ClientType, wildcard: bool) -> Self {
+    pub fn generate(sub_domain: Option<String>, domain: Option<String>, typ: ClientType, wildcard: bool) -> Self {
         ClientHello {
             id: ClientId::generate(),
             client_type: typ,
             sub_domain,
+            domain,
             reconnect_token: None,
             wildcard,
         }
@@ -87,6 +89,7 @@ impl ClientHello {
         ClientHello {
             id: ClientId::generate(),
             sub_domain: None,
+            domain: None,
             client_type: ClientType::Anonymous,
             reconnect_token: Some(reconnect_token),
             wildcard,

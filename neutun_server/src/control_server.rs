@@ -13,6 +13,27 @@ pub fn spawn<A: Into<SocketAddr>>(addr: A) {
         tracing::debug!("Health Check #2 triggered");
         "ok"
     });
+
+    // Add endpoint to list allowed domains
+    let list_domains = warp::get().and(warp::path("api")).and(warp::path("domains")).map(|| {
+        let domains = &CONFIG.allowed_hosts;
+        warp::reply::json(domains)
+    });
+
+    // Add endpoint to list taken domains (for wildcard info or debugging)
+    let list_taken = warp::get().and(warp::path("api")).and(warp::path("taken")).map(|| {
+        // Collect currently connected clients formatted for display
+        let clients = CONNECTIONS.get_all_clients();
+        let taken: Vec<String> = clients.iter().map(|c| {
+            if c.wildcard {
+                format!("*.{}", c.domain)
+            } else {
+                format!("{}.{}", c.host, c.domain)
+            }
+        }).collect();
+        warp::reply::json(&taken)
+    });
+
     let client_conn = warp::path("wormhole").and(client_ip()).and(warp::ws()).map(
         move |client_ip: IpAddr, ws: Ws| {
             ws.on_upgrade(move |w| {
@@ -22,7 +43,7 @@ pub fn spawn<A: Into<SocketAddr>>(addr: A) {
         },
     );
 
-    let routes = client_conn.or(health_check);
+    let routes = client_conn.or(health_check).or(list_domains).or(list_taken);
 
     // spawn our websocket control server
     tokio::spawn(warp::serve(routes).run(addr.into()));
@@ -66,12 +87,13 @@ async fn handle_new_connection(client_ip: IpAddr, websocket: WebSocket) {
         None => return,
     };
 
-    tracing::info!(client_ip=%client_ip, subdomain=%handshake.sub_domain, "open tunnel");
+    tracing::info!(client_ip=%client_ip, subdomain=%handshake.sub_domain, domain=%handshake.domain, "open tunnel");
 
     let (tx, rx) = unbounded::<ControlPacket>();
     let mut client = ConnectedClient {
         id: handshake.id,
         host: handshake.sub_domain,
+        domain: handshake.domain,
         is_anonymous: handshake.is_anonymous,
         wildcard: handshake.wildcard,
         tx,
@@ -141,9 +163,9 @@ async fn try_client_handshake(websocket: WebSocket) -> Option<(WebSocket, Client
 
     // Send server hello success
     let hostname = if client_handshake.wildcard {
-        format!("*.{}", CONFIG.tunnel_host)
+        format!("*.{}", &client_handshake.domain)
     } else {
-        format!("{}.{}", &client_handshake.sub_domain, CONFIG.tunnel_host)
+        format!("{}.{}", &client_handshake.sub_domain, &client_handshake.domain)
     };
 
     let data = serde_json::to_vec(&ServerHello::Success {
