@@ -1,0 +1,22 @@
+services:
+  neutun:
+    image: neutun_server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080" # Public TCP port for incoming traffic
+      - "${CTRL_PORT:-5000}:5000" # Control port for client WebSocket connections
+    environment:
+      - PORT=8080
+      - CTRL_PORT=5000
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-example.com}
+      - TUNNEL_HOST=${TUNNEL_HOST:-neutun.dev}
+      - MASTER_API_KEY=${MASTER_API_KEY}
+      # - BLOCKED_SUB_DOMAINS=dashboard,wormhole # Optional
+      # - RUST_LOG=neutun_server=debug # Optional for debugging
+    volumes:
+      # Mount the Docker socket if needed, though usually not required for the basic server.
+      # If using Let's Encrypt or other services, you might need volumes for certs.
+      - ./certs:/etc/ssl/certs:ro

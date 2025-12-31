@@ -1,0 +1,14 @@
+[workspace]
+
+members = [
+    "neutun_lib",
+    "neutun",
+    "neutun_server",
+]
+
+exclude = [
+    "neutun_proxy"
+]
+
+[profile.dev]
+split-debuginfo = "unpacked"

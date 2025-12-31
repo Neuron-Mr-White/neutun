@@ -1,0 +1,18 @@
+[package]
+name = "neutun_lib"
+description = "expose your local web server to the internet with a public url"
+version = "0.1.19"
+authors = ["Neutun Developers"]
+edition = "2018"
+license = "MIT"
+repository = "https://github.com/Neuron-Mr-White/neudun"
+readme = "../README.md"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+base64 = "0.22"
+sha2 = "0.10"
+hmac-sha256 = "1.1"
+hex = "0.4"

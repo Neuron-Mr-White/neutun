@@ -1,0 +1,46 @@
+[package]
+name = "neutun"
+description = "expose your local web server to the internet with a public url"
+version = "0.1.19"
+authors = ["Neutun Developers"]
+edition = "2018"
+license = "MIT"
+repository = "https://github.com/Neuron-Mr-White/neudun"
+readme = "../README.md"
+
+[[bin]]
+name = "neutun"
+path = "src/main.rs"
+
+[dependencies]
+neutun_lib = { version = "0.1.19", path = "../neutun_lib" }
+tokio = { version = "1.0", features = ["full"] }
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"]}
+tungstenite = { version = "0.24", default-features = false, features = ["rustls-tls-webpki-roots"]}
+tokio-rustls = "0.26"
+lazy_static = "1.4.0"
+pretty_env_logger = "0.4.0"
+dirs = "6.0"
+log = "0.4.8"
+human-panic = "2.0"
+structopt = "0.3.12"
+colored = "1.9.3"
+thiserror = "1.0"
+indicatif = "0.15.0"
+httparse = "1.3.4"
+warp = "0.3.7"
+bytes = "1.0"
+askama = { version = "0.11", features = ["serde-json"] }
+chrono = "0.4"
+uuid = {version = "1.0", features = ["serde", "v4"] }
+hyper = "0.14"
+hyper-rustls = "0.27"
+http-body = "0.4"
+serde_urlencoded = "0.7"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+cli-table = "0.4"
+semver = "1.0"
+webpki-roots = "0.26"
