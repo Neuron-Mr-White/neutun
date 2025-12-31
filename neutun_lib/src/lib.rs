@@ -68,24 +68,28 @@ pub struct ClientHello {
     pub sub_domain: Option<String>,
     pub client_type: ClientType,
     pub reconnect_token: Option<ReconnectToken>,
+    #[serde(default)]
+    pub wildcard: bool,
 }
 
 impl ClientHello {
-    pub fn generate(sub_domain: Option<String>, typ: ClientType) -> Self {
+    pub fn generate(sub_domain: Option<String>, typ: ClientType, wildcard: bool) -> Self {
         ClientHello {
             id: ClientId::generate(),
             client_type: typ,
             sub_domain,
             reconnect_token: None,
+            wildcard,
         }
     }
 
-    pub fn reconnect(reconnect_token: ReconnectToken) -> Self {
+    pub fn reconnect(reconnect_token: ReconnectToken, wildcard: bool) -> Self {
         ClientHello {
             id: ClientId::generate(),
             sub_domain: None,
             client_type: ClientType::Anonymous,
             reconnect_token: Some(reconnect_token),
+            wildcard,
         }
     }
 }

@@ -4,6 +4,7 @@ use crate::ClientId;
 use serde::{Deserialize, Serialize};
 use warp::Filter;
 
+#[allow(dead_code)]
 pub fn spawn<A: Into<SocketAddr>>(addr: A) {
     let health_check = warp::get().and(warp::path("health_check")).map(|| {
         tracing::debug!("Net svc health check triggered");

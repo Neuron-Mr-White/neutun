@@ -104,8 +104,6 @@ sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin 
     | `BLOCKED_SUB_DOMAINS` | Comma-separated list of subdomains to block. | `[]` |
     | `BLOCKED_IPS` | Comma-separated list of IP addresses to block. | `[]` |
     | `MASTER_SIG_KEY` | Key for signing reconnect tokens. Defaults to ephemeral if unset. | *(Ephemeral)* |
-    | `FLY_APP_NAME` | Used for Fly.io gossip DNS discovery. | `None` |
-    | `FLY_ALLOC_ID` | Instance ID for Fly.io. | `Uuid::new_v4()` |
 
     #### Client
     | Variable | Description | Default |
@@ -286,6 +284,37 @@ The `neutun` client connects to the server and tunnels traffic from your local m
     # -s: Desired subdomain
     ./neutun -p 8000 -k <YOUR_MASTER_API_KEY> -s myservice
     ```
+
+### Client Help
+```
+neutun 0.1.19
+Neutun Developers
+Expose your local web server to the internet with a public url.
+
+USAGE:
+    neutun [FLAGS] [OPTIONS] [SUBCOMMAND]
+
+FLAGS:
+    -h, --help        Prints help information
+    -t, --use-tls     Sets the protocol for local forwarding (i.e. https://localhost) to forward incoming tunnel traffic
+                      to
+    -V, --version     Prints version information
+    -v, --verbose     A level of verbosity, and can be used multiple times
+    -w, --wildcard    Allow listen to wildcard sub-domains
+
+OPTIONS:
+        --dashboard-port <dashboard-port>    Sets the address of the local introspection dashboard
+    -k, --key <key>                          Sets an API authentication key to use for this tunnel
+        --host <local-host>                  Sets the HOST (i.e. localhost) to forward incoming tunnel traffic to
+                                             [default: localhost]
+    -p, --port <port>                        Sets the port to forward incoming tunnel traffic to on the target host
+                                             [default: 8000]
+    -s, --subdomain <sub-domain>             Specify a sub-domain for this tunnel
+
+SUBCOMMANDS:
+    help        Prints this message or the help of the given subcommand(s)
+    set-auth    Store the API Authentication key
+```
 
 ### Subdomains
 Subdomains are first-come, first-served. If a subdomain is currently in use by another connected client, you will be unable to claim it until they disconnect.

@@ -30,12 +30,10 @@ pub fn spawn<A: Into<SocketAddr>>(addr: A) {
 
 fn client_ip() -> impl Filter<Extract = (IpAddr,), Error = Rejection> + Copy {
     warp::any()
-        .and(warp::header::optional("Fly-Client-IP"))
         .and(warp::header::optional("X-Forwarded-For"))
         .and(warp::addr::remote())
         .map(
-            |client_ip: Option<String>, fwd: Option<String>, remote: Option<SocketAddr>| {
-                let client_ip = client_ip.map(|s| IpAddr::from_str(&s).ok()).flatten();
+            |fwd: Option<String>, remote: Option<SocketAddr>| {
                 let fwd = fwd
                     .map(|s| {
                         s.split(",")
@@ -47,8 +45,7 @@ fn client_ip() -> impl Filter<Extract = (IpAddr,), Error = Rejection> + Copy {
                     })
                     .flatten();
                 let remote = remote.map(|r| r.ip());
-                client_ip
-                    .or(fwd)
+                fwd
                     .or(remote)
                     .unwrap_or(IpAddr::from([0, 0, 0, 0]))
             },
@@ -76,6 +73,7 @@ async fn handle_new_connection(client_ip: IpAddr, websocket: WebSocket) {
         id: handshake.id,
         host: handshake.sub_domain,
         is_anonymous: handshake.is_anonymous,
+        wildcard: handshake.wildcard,
         tx,
     };
     Connections::add(client.clone());
@@ -142,9 +140,15 @@ async fn try_client_handshake(websocket: WebSocket) -> Option<(WebSocket, Client
     let (mut websocket, client_handshake) = client_auth::auth_client_handshake(websocket).await?;
 
     // Send server hello success
+    let hostname = if client_handshake.wildcard {
+        format!("*.{}", CONFIG.tunnel_host)
+    } else {
+        format!("{}.{}", &client_handshake.sub_domain, CONFIG.tunnel_host)
+    };
+
     let data = serde_json::to_vec(&ServerHello::Success {
         sub_domain: client_handshake.sub_domain.clone(),
-        hostname: format!("{}.{}", &client_handshake.sub_domain, CONFIG.tunnel_host),
+        hostname,
         client_id: client_handshake.id.clone(),
     })
     .unwrap_or_default();

@@ -71,21 +71,26 @@ pub async fn accept_connection(socket: TcpStream) {
     let client = match Connections::find_by_host(&host) {
         Some(client) => client.clone(),
         None => {
-            // check other instances that may be serving this host
-            match network::instance_for_host(&host).await {
-                Ok((instance, _)) => {
-                    network::proxy_stream(instance, socket).await;
-                    return;
-                }
-                Err(network::Error::DoesNotServeHost) => {
-                    error!(%host, "no tunnel found");
-                    let _ = socket.write_all(HTTP_NOT_FOUND_RESPONSE).await;
-                    return;
-                }
-                Err(error) => {
-                    error!(%host, ?error, "failed to find instance");
-                    let _ = socket.write_all(HTTP_ERROR_LOCATING_HOST_RESPONSE).await;
-                    return;
+            // try to find a wildcard client
+            if let Some(client) = Connections::find_wildcard() {
+                 client
+            } else {
+                // check other instances that may be serving this host
+                match network::instance_for_host(&host).await {
+                    Ok((instance, _)) => {
+                        network::proxy_stream(instance, socket).await;
+                        return;
+                    }
+                    Err(network::Error::DoesNotServeHost) => {
+                        error!(%host, "no tunnel found");
+                        let _ = socket.write_all(HTTP_NOT_FOUND_RESPONSE).await;
+                        return;
+                    }
+                    Err(error) => {
+                        error!(%host, ?error, "failed to find instance");
+                        let _ = socket.write_all(HTTP_ERROR_LOCATING_HOST_RESPONSE).await;
+                        return;
+                    }
                 }
             }
         }
@@ -137,16 +142,22 @@ fn validate_host_prefix(host: &str) -> Option<String> {
         }
     };
 
-    let domain_segments = host.split(".").collect::<Vec<&str>>();
-    let prefix = &domain_segments[0];
-    let remaining = &domain_segments[1..].join(".");
+    for allowed in &CONFIG.allowed_hosts {
+        if host.ends_with(allowed) {
+            let len_suffix = allowed.len();
+            let len_host = host.len();
 
-    if CONFIG.allowed_hosts.contains(remaining) {
-        Some(prefix.to_string())
-    } else {
-        None
+            // ensure it's a subdomain (has a dot separator)
+            if len_host > len_suffix && host.as_bytes()[len_host - len_suffix - 1] == b'.' {
+                let prefix = &host[..len_host - len_suffix - 1];
+                return Some(prefix.to_string());
+            }
+        }
     }
+
+    None
 }
+
 
 /// Response Constants
 const HTTP_HELLO_WORLD_RESPONSE: &'static [u8] =

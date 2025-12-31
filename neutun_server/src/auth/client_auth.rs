@@ -10,6 +10,7 @@ pub struct ClientHandshake {
     pub id: ClientId,
     pub sub_domain: String,
     pub is_anonymous: bool,
+    pub wildcard: bool,
 }
 
 #[tracing::instrument(skip(websocket))]
@@ -53,7 +54,7 @@ async fn auth_client(
             // let (client_id, sub_domain) =
             //     match (client_hello.reconnect_token, client_hello.sub_domain) {
             //         (Some(token), _) => {
-            //             return handle_reconnect_token(token, websocket).await;
+            //             return handle_reconnect_token(token, websocket, client_hello.wildcard).await;
             //         }
             //         (None, Some(sd)) => (
             //             ClientId::generate(),
@@ -68,6 +69,7 @@ async fn auth_client(
             //         id: client_id,
             //         sub_domain,
             //         is_anonymous: true,
+            //         wildcard: client_hello.wildcard,
             //     },
             // ));
         }
@@ -78,6 +80,7 @@ async fn auth_client(
                     websocket,
                     requested_sub_domain,
                     &client_id,
+                    client_hello.wildcard,
                 )
                 .await
                 {
@@ -90,7 +93,7 @@ async fn auth_client(
             }
             None => {
                 if let Some(token) = client_hello.reconnect_token {
-                    return handle_reconnect_token(token, websocket).await;
+                    return handle_reconnect_token(token, websocket, client_hello.wildcard).await;
                 } else {
                     let sub_domain = ServerHello::random_domain();
                     let client_id = key.client_id();
@@ -138,6 +141,7 @@ async fn auth_client(
             id: client_id,
             sub_domain,
             is_anonymous: false,
+            wildcard: client_hello.wildcard,
         },
     ))
 }
@@ -146,6 +150,7 @@ async fn auth_client(
 async fn handle_reconnect_token(
     token: ReconnectToken,
     mut websocket: WebSocket,
+    wildcard: bool,
 ) -> Option<(WebSocket, ClientHandshake)> {
     let payload = match ReconnectTokenPayload::verify(token, &CONFIG.master_sig_key) {
         Ok(payload) => payload,
@@ -162,12 +167,25 @@ async fn handle_reconnect_token(
         "accepting reconnect token from client",
     );
 
+    if wildcard {
+        use crate::connected_clients::Connections;
+        if let Some(existing_wildcard) = Connections::find_wildcard() {
+             if &existing_wildcard.id != &payload.client_id {
+                error!("invalid client hello: wildcard in use!");
+                let data = serde_json::to_vec(&ServerHello::SubDomainInUse).unwrap_or_default();
+                let _ = websocket.send(Message::binary(data)).await;
+                return None;
+             }
+        }
+    }
+
     Some((
         websocket,
         ClientHandshake {
             id: payload.client_id,
             sub_domain: payload.sub_domain,
             is_anonymous: true,
+            wildcard,
         },
     ))
 }
@@ -176,6 +194,7 @@ async fn sanitize_sub_domain_and_pre_validate(
     mut websocket: WebSocket,
     requested_sub_domain: String,
     client_id: &ClientId,
+    wildcard: bool,
 ) -> Option<(WebSocket, String)> {
     // ignore uppercase
     let sub_domain = requested_sub_domain.to_lowercase();
@@ -214,6 +233,18 @@ async fn sanitize_sub_domain_and_pre_validate(
         }
         Err(e) => {
             tracing::debug!("Got error checking instances: {:?}", e);
+        }
+    }
+
+    if wildcard {
+        use crate::connected_clients::Connections;
+        if let Some(existing_wildcard) = Connections::find_wildcard() {
+             if &existing_wildcard.id != client_id {
+                error!("invalid client hello: wildcard in use!");
+                let data = serde_json::to_vec(&ServerHello::SubDomainInUse).unwrap_or_default();
+                let _ = websocket.send(Message::binary(data)).await;
+                return None;
+             }
         }
     }
 

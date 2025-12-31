@@ -7,6 +7,7 @@ pub struct ConnectedClient {
     pub id: ClientId,
     pub host: String,
     pub is_anonymous: bool,
+    pub wildcard: bool,
     pub tx: UnboundedSender<ControlPacket>,
 }
 
@@ -78,6 +79,15 @@ impl Connections {
 
     pub fn find_by_host(host: &String) -> Option<ConnectedClient> {
         CONNECTIONS.hosts.get(host).map(|c| c.value().clone())
+    }
+
+    pub fn find_wildcard() -> Option<ConnectedClient> {
+        for entry in CONNECTIONS.clients.iter() {
+            if entry.value().wildcard {
+                return Some(entry.value().clone());
+            }
+        }
+        None
     }
 
     pub fn add(client: ConnectedClient) {

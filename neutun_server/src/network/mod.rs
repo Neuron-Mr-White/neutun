@@ -1,15 +1,13 @@
-use futures::future::select_ok;
-use futures::FutureExt;
 use std::net::{IpAddr, SocketAddr};
 use thiserror::Error;
 mod server;
+#[allow(unused_imports)]
 pub use self::server::spawn;
 mod proxy;
 pub use self::proxy::proxy_stream;
 use crate::network::server::{HostQuery, HostQueryResponse};
 use crate::ClientId;
 use reqwest::StatusCode;
-use trust_dns_resolver::TokioAsyncResolver;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -34,26 +32,14 @@ pub struct Instance {
 
 impl Instance {
     /// get all instances where our app runs
+    #[allow(dead_code)]
     async fn get_instances() -> Result<Vec<Instance>, Error> {
-        let query = if let Some(dns) = crate::CONFIG.gossip_dns_host.clone() {
-            dns
-        } else {
-            tracing::warn!("warning! gossip mode disabled!");
-            return Ok(vec![]);
-        };
-
-        tracing::debug!("querying app instances");
-
-        let resolver = TokioAsyncResolver::tokio_from_system_conf()?;
-
-        let ips = resolver.lookup_ip(query).await?;
-
-        let instances = ips.iter().map(|ip| Instance { ip }).collect();
-        tracing::debug!("Found app instances: {:?}", &instances);
-        Ok(instances)
+        tracing::warn!("warning! gossip mode disabled!");
+        Ok(vec![])
     }
 
     /// query the instance and see if it runs our host
+    #[allow(dead_code)]
     async fn serves_host(self, host: &str) -> Result<(Instance, ClientId), Error> {
         let addr = SocketAddr::new(self.ip.clone(), crate::CONFIG.internal_network_port);
         let url = format!("http://{}", addr.to_string());
@@ -90,16 +76,6 @@ impl Instance {
 /// get the ip address we need to connect to that runs our host
 #[tracing::instrument]
 pub async fn instance_for_host(host: &str) -> Result<(Instance, ClientId), Error> {
-    let instances = Instance::get_instances()
-        .await?
-        .into_iter()
-        .map(|i| i.serves_host(host).boxed());
-
-    if instances.len() == 0 {
-        return Err(Error::DoesNotServeHost);
-    }
-
-    let instance = select_ok(instances).await?.0;
-    tracing::info!(instance_ip=%instance.0.ip, client_id=%instance.1.to_string(), subdomain=%host, "found instance for host");
-    Ok(instance)
+    // Disabled gossip lookup as Fly.io logic is removed.
+    Err(Error::DoesNotServeHost)
 }
