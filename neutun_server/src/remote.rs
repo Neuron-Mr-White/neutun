@@ -122,10 +122,10 @@ pub async fn accept_connection(socket: TcpStream) {
     );
 
     // read from client, write to socket
-    let span = observability::remote_trace("tunnel_to_stream");
+    let span = observability::remote_trace("neutun_stream");
     tokio::spawn(
         async move {
-            tunnel_to_stream(host, stream_id, sink, queue_rx).await;
+            neutun_stream(host, stream_id, sink, queue_rx).await;
         }
         .instrument(span),
     );
@@ -304,7 +304,7 @@ async fn process_tcp_stream(mut tunnel_stream: ActiveStream, mut tcp_stream: Rea
 }
 
 #[tracing::instrument(skip(sink, stream_id, queue))]
-async fn tunnel_to_stream(
+async fn neutun_stream(
     subdomain: String,
     stream_id: StreamId,
     mut sink: WriteHalf<TcpStream>,

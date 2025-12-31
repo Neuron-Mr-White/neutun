@@ -7,16 +7,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'tunnelto_lib'",
+            "name": "Debug unit tests in library 'neutun_lib'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=tunnelto_lib"
+                    "--package=neutun_lib"
                 ],
                 "filter": {
-                    "name": "tunnelto_lib",
+                    "name": "neutun_lib",
                     "kind": "lib"
                 }
             },
@@ -26,15 +26,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'tunnelto'",
+            "name": "Debug executable 'neutun'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=tunnelto",
-                    "--package=tunnelto"
+                    "--bin=neutun",
+                    "--package=neutun"
                 ],
                 "filter": {
-                    "name": "tunnelto",
+                    "name": "neutun",
                     "kind": "bin"
                 }
             },
@@ -44,16 +44,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'tunnelto'",
+            "name": "Debug unit tests in executable 'neutun'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=tunnelto",
-                    "--package=tunnelto"
+                    "--bin=neutun",
+                    "--package=neutun"
                 ],
                 "filter": {
-                    "name": "tunnelto",
+                    "name": "neutun",
                     "kind": "bin"
                 }
             },
@@ -63,15 +63,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'tunnelto_server'",
+            "name": "Debug executable 'neutun_server'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=tunnelto_server",
-                    "--package=tunnelto_server"
+                    "--bin=neutun_server",
+                    "--package=neutun_server"
                 ],
                 "filter": {
-                    "name": "tunnelto_server",
+                    "name": "neutun_server",
                     "kind": "bin"
                 }
             },
@@ -86,11 +86,11 @@
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=tunnelto_server",
-                    "--package=tunnelto_server"
+                    "--bin=neutun_server",
+                    "--package=neutun_server"
                 ],
                 "filter": {
-                    "name": "tunnelto_server",
+                    "name": "neutun_server",
                     "kind": "bin"
                 }
             },

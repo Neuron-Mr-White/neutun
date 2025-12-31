@@ -1,6 +1,6 @@
 /target
-tunnelto_server
-!tunnelto_server/
+neutun_server
+!neutun_server/
 *.env
-tunnelto_proxy/
+neutun_proxy/
 .idea/
