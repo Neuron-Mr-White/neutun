@@ -6,7 +6,6 @@ use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::time::Duration;
 use tracing::{error, Instrument};
-use warp::Rejection;
 
 pub fn spawn<A: Into<SocketAddr>>(addr: A) {
     let health_check = warp::get().and(warp::path("health_check")).map(|| {
@@ -49,25 +48,22 @@ pub fn spawn<A: Into<SocketAddr>>(addr: A) {
     tokio::spawn(warp::serve(routes).run(addr.into()));
 }
 
-fn client_ip() -> impl Filter<Extract = (IpAddr,), Error = Rejection> + Copy {
+fn client_ip() -> impl Filter<Extract = (IpAddr,), Error = warp::Rejection> + Copy {
     warp::any()
-        .and(warp::header::optional("X-Forwarded-For"))
-        .and(warp::addr::remote())
+        .and(warp::header::optional::<String>("X-Forwarded-For"))
+        .and(warp::header::optional::<String>("X-Real-IP"))
         .map(
-            |fwd: Option<String>, remote: Option<SocketAddr>| {
-                let fwd = fwd
-                    .map(|s| {
-                        s.split(",")
-                            .into_iter()
-                            .next()
-                            .map(IpAddr::from_str)
-                            .map(Result::ok)
-                            .flatten()
-                    })
-                    .flatten();
-                let remote = remote.map(|r| r.ip());
-                fwd
-                    .or(remote)
+            |fwd: Option<String>, real_ip: Option<String>| {
+                // Try X-Forwarded-For first (first IP in the comma-separated list)
+                let from_fwd = fwd.and_then(|s| {
+                    s.split(',')
+                        .next()
+                        .and_then(|ip| IpAddr::from_str(ip.trim()).ok())
+                });
+                // Then try X-Real-IP
+                let from_real = real_ip.and_then(|s| IpAddr::from_str(s.trim()).ok());
+                from_fwd
+                    .or(from_real)
                     .unwrap_or(IpAddr::from([0, 0, 0, 0]))
             },
         )

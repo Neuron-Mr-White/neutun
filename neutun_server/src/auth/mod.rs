@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::fmt::Formatter;
@@ -23,7 +23,7 @@ pub struct Signature(String);
 
 impl SigKey {
     pub fn generate() -> Self {
-        SigKey(rand::rng().gen::<[u8; 32]>())
+        SigKey(rand::rng().random::<[u8; 32]>())
     }
 
     pub fn from_hex(hex: &str) -> Result<Self, ()> {
