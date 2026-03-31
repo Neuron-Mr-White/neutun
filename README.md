@@ -395,7 +395,7 @@ neutun -p 8000 -k <YOUR_MASTER_API_KEY> -s myservice
 
 ### Client Help
 ```
-neutun 1.0.4
+neutun 1.0.6
 Command line arguments
 
 USAGE:
@@ -420,9 +420,13 @@ OPTIONS:
     -s, --subdomain <sub-domain>             Specify a sub-domain for this tunnel
 
 SUBCOMMANDS:
+    daemon           Run neutun as a background daemon
     domains          List available domains on the server
     help             Prints this message or the help of the given subcommand(s)
+    onboard          Interactive onboarding to set up tunnel configuration
     set-auth         Store the API Authentication key
+    set-domain       Set the default domain for tunnels
+    set-port         Set the default local port for tunnels
     taken-domains    List currently taken subdomains/wildcards
 ```
 
@@ -437,7 +441,7 @@ Subdomains are first-come, first-served. If a subdomain is currently in use by a
 
 **Cause:** Older builds (< v1.0.4) used the `aws-lc-rs` cryptographic backend for `rustls`, which can fail to load its native library on Windows.
 
-**Fix:** Update to v1.0.4 or later, which uses the `ring` crypto provider and explicitly initializes the TLS stack. If you cannot update immediately, use `CTRL_TLS_OFF=1` to bypass TLS (connect directly to the server's control port without Nginx/SSL).
+**Fix:** Update to v1.0.4 or later (latest: v1.0.6), which uses the `ring` crypto provider and explicitly initializes the TLS stack. If you cannot update immediately, use `CTRL_TLS_OFF=1` to bypass TLS (connect directly to the server's control port without Nginx/SSL).
 
 ### Connection times out silently (Error 10060)
 
@@ -466,7 +470,7 @@ Subdomains are first-come, first-served. If a subdomain is currently in use by a
 
 **Cause:** In builds prior to v1.0.4, the Cargo.toml version (`0.1.x`) did not match the GitHub release tag (`v1.0.x`), causing the semver comparison to always report an update.
 
-**Fix:** Update to v1.0.4 or later, where the versions are synchronized.
+**Fix:** Update to v1.0.4 or later (latest: v1.0.6), where the versions are synchronized.
 
 ## License
 MIT
