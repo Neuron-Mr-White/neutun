@@ -13,6 +13,8 @@ const DEFAULT_CONTROL_PORT: &'static str = "5000";
 
 const SETTINGS_DIR: &'static str = ".neutun";
 const SECRET_KEY_FILE: &'static str = "key.token";
+const DOMAIN_FILE: &'static str = "domain.txt";
+const PORT_FILE: &'static str = "port.txt";
 
 /// Command line arguments
 #[derive(Debug, StructOpt)]
@@ -65,6 +67,22 @@ pub enum SubCommand {
         #[structopt(short = "k", long = "key")]
         key: String,
     },
+    /// Interactive onboarding to set up tunnel configuration
+    Onboard,
+    /// Set the default domain for tunnels
+    SetDomain {
+        /// The domain to use (e.g., "neutun.dev")
+        #[structopt(short = "d", long = "domain")]
+        domain: String,
+    },
+    /// Set the default local port for tunnels
+    SetPort {
+        /// The port number to forward to
+        #[structopt(short = "p", long = "port", default_value = "8000")]
+        port: u16,
+    },
+    /// Run neutun as a background daemon
+    Daemon,
     /// List available domains on the server
     Domains,
     /// List currently taken subdomains/wildcards
@@ -121,6 +139,42 @@ impl Config {
                 eprintln!("Authentication key stored successfully!");
                 std::process::exit(0);
             }
+            Some(SubCommand::Onboard) => {
+                run_onboarding();
+                std::process::exit(0);
+            }
+            Some(SubCommand::SetDomain { domain }) => {
+                let domain = opts.domain.unwrap_or(domain);
+                let settings_dir = match dirs::home_dir().map(|h| h.join(SETTINGS_DIR)) {
+                    Some(path) => path,
+                    None => {
+                        panic!("Could not find home directory to store settings.")
+                    }
+                };
+                std::fs::create_dir_all(&settings_dir).expect("Fail to create settings directory");
+                std::fs::write(settings_dir.join(DOMAIN_FILE), domain)
+                    .expect("Failed to save domain file.");
+                eprintln!("Domain saved successfully!");
+                std::process::exit(0);
+            }
+            Some(SubCommand::SetPort { port }) => {
+                let port = if opts.port != 8000 { opts.port } else { port };
+                let settings_dir = match dirs::home_dir().map(|h| h.join(SETTINGS_DIR)) {
+                    Some(path) => path,
+                    None => {
+                        panic!("Could not find home directory to store settings.")
+                    }
+                };
+                std::fs::create_dir_all(&settings_dir).expect("Fail to create settings directory");
+                std::fs::write(settings_dir.join(PORT_FILE), port.to_string())
+                    .expect("Failed to save port file.");
+                eprintln!("Port saved successfully!");
+                std::process::exit(0);
+            }
+            Some(SubCommand::Daemon) => {
+                run_daemon();
+                std::process::exit(0);
+            }
             Some(SubCommand::Domains) => (None, None), // Handled in main
             Some(SubCommand::TakenDomains) => (None, None), // Handled in main
             None => {
@@ -152,7 +206,14 @@ impl Config {
         // Note: For SubCommands like Domains/TakenDomains, we might not need local addr,
         // but it doesn't hurt to parse it if we can, or just default safely if valid commands are used.
         // However, `opts.local_host` has a default, so this should usually pass unless DNS fails.
-        let local_addr = match (opts.local_host.as_str(), opts.port)
+        let port = opts.port;
+        let saved_port = Config::load_saved_port();
+        let port = if port == 8000 && saved_port.is_some() {
+            saved_port.unwrap()
+        } else {
+            port
+        };
+        let local_addr = match (opts.local_host.as_str(), port)
             .to_socket_addrs()
             .unwrap_or(vec![].into_iter())
             .next()
@@ -196,7 +257,7 @@ impl Config {
             local_port: opts.port,
             local_addr,
             sub_domain,
-            domain: opts.domain,
+            domain: opts.domain.or_else(Config::load_saved_domain),
             dashboard_port: opts.dashboard_port.unwrap_or(0),
             verbose: opts.verbose,
             secret_key: secret_key.map(|s| SecretKey(s)),
@@ -225,5 +286,141 @@ impl Config {
     pub fn ws_forward_url(&self) -> String {
         let scheme = if self.use_tls { "wss" } else { "ws" };
         format!("{}://{}:{}", scheme, &self.local_host, &self.local_port)
+    }
+
+    fn get_settings_dir() -> std::path::PathBuf {
+        dirs::home_dir()
+            .map(|h| h.join(SETTINGS_DIR))
+            .expect("Could not find home directory")
+    }
+
+    pub fn load_saved_domain() -> Option<String> {
+        let path = Self::get_settings_dir().join(DOMAIN_FILE);
+        if path.exists() {
+            std::fs::read_to_string(path).ok()
+        } else {
+            None
+        }
+    }
+
+    pub fn load_saved_port() -> Option<u16> {
+        let path = Self::get_settings_dir().join(PORT_FILE);
+        if path.exists() {
+            std::fs::read_to_string(path)
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+        } else {
+            None
+        }
+    }
+}
+
+fn get_input(prompt: &str, default: &str) -> String {
+    print!("{} [{}]: ", prompt, default);
+    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).unwrap();
+    let input = input.trim();
+    if input.is_empty() {
+        default.to_string()
+    } else {
+        input.to_string()
+    }
+}
+
+fn run_onboarding() {
+    let settings_dir = dirs::home_dir()
+        .map(|h| h.join(SETTINGS_DIR))
+        .expect("Could not find home directory");
+
+    std::fs::create_dir_all(&settings_dir).expect("Failed to create settings directory");
+
+    println!("\n=== Neutun Onboarding ===\n");
+
+    let domain = get_input("Enter your domain", DEFAULT_HOST);
+    if domain != DEFAULT_HOST {
+        std::fs::write(settings_dir.join(DOMAIN_FILE), &domain).expect("Failed to save domain");
+    }
+
+    let port = get_input("Enter your local port", "8000");
+    let port: u16 = port.parse().unwrap_or(8000);
+    std::fs::write(settings_dir.join(PORT_FILE), port.to_string()).expect("Failed to save port");
+
+    println!("\nNow let's set up your authentication key.");
+    println!("You can get your access key from: https://dashboard.neutun.dev\n");
+
+    let key = get_input("Enter your API key (press Enter to skip)", "");
+    if !key.is_empty() {
+        std::fs::write(settings_dir.join(SECRET_KEY_FILE), &key).expect("Failed to save key");
+        println!("\nAPI key saved successfully!");
+    } else {
+        println!("\nNo API key set. You can add it later with: neutun set-auth -k YOUR_KEY");
+    }
+
+    println!("\n=== Onboarding Complete! ===");
+    println!("You can now run 'neutun' to start your tunnel.");
+    println!("Use 'neutun --help' to see all options.\n");
+}
+
+#[cfg(target_os = "windows")]
+fn run_daemon() {
+    use std::process::Command;
+
+    println!("Starting Neutun as a background service on Windows...");
+
+    let exe_path = std::env::current_exe().expect("Could not get current executable path");
+
+    let child = Command::new("powershell")
+        .args(&[
+            "-Command",
+            &format!(
+                "Start-Process -FilePath '{}' -WindowStyle Hidden",
+                exe_path.display()
+            ),
+        ])
+        .spawn();
+
+    match child {
+        Ok(_) => println!("Neutun daemon started successfully in background."),
+        Err(e) => eprintln!("Failed to start daemon: {}", e),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn run_daemon() {
+    use std::process::Command;
+
+    println!("Starting Neutun as a background service on macOS...");
+
+    let exe_path = std::env::current_exe().expect("Could not get current executable path");
+
+    let child = Command::new("launchctl")
+        .args(&["submit", "-l", "neutun", "--", exe_path.to_str().unwrap()])
+        .spawn();
+
+    match child {
+        Ok(_) => println!("Neutun daemon started successfully."),
+        Err(e) => eprintln!("Failed to start daemon: {}", e),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn run_daemon() {
+    use std::process::Command;
+
+    println!("Starting Neutun as a background service on Linux...");
+
+    let exe_path = std::env::current_exe().expect("Could not get current executable path");
+
+    let child = Command::new("nohup")
+        .arg(exe_path)
+        .arg(">/dev/null")
+        .arg("2>&1")
+        .arg("&")
+        .spawn();
+
+    match child {
+        Ok(_) => println!("Neutun daemon started successfully in background."),
+        Err(e) => eprintln!("Failed to start daemon: {}", e),
     }
 }
