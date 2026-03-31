@@ -23,7 +23,7 @@ pub struct Signature(String);
 
 impl SigKey {
     pub fn generate() -> Self {
-        SigKey(rand::thread_rng().gen::<[u8; 32]>())
+        SigKey(rand::rng().gen::<[u8; 32]>())
     }
 
     pub fn from_hex(hex: &str) -> Result<Self, ()> {

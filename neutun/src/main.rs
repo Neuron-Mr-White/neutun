@@ -3,7 +3,7 @@ use futures::{SinkExt, StreamExt};
 
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{Connector, MaybeTlsStream, WebSocketStream};
 
 use human_panic::setup_panic;
 pub use log::{debug, error, info, warn};
@@ -45,6 +45,13 @@ pub enum StreamMessage {
 
 #[tokio::main]
 async fn main() {
+    // Install the ring CryptoProvider for rustls before any TLS operations.
+    // This prevents panics on Windows where aws-lc-rs (the default provider)
+    // may fail to load its native library at runtime.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls CryptoProvider");
+
     let mut config = match Config::get() {
         Ok(config) => config,
         Err(_) => return,
@@ -65,7 +72,7 @@ async fn main() {
 
     update::check().await;
 
-    let introspect_dash_addr = introspect::start_introspect_web_dashboard(config.clone());
+    let introspect_dash_addr = introspect::start_introspect_web_dashboard(config.clone()).await;
 
     loop {
         let (restart_tx, mut restart_rx) = unbounded();
@@ -246,7 +253,27 @@ struct Wormhole {
 }
 
 async fn connect_to_wormhole(config: &Config) -> Result<Wormhole, Error> {
-    let (mut websocket, _) = tokio_tungstenite::connect_async(&config.control_url).await?;
+    // Build an explicit rustls TLS connector using ring and webpki-roots.
+    // This avoids relying on the default connector, which on Windows can panic
+    // if aws-lc-rs fails to initialize.
+    let connector = if !config.control_tls_off {
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let tls_config = rustls::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+        Some(Connector::Rustls(Arc::new(tls_config)))
+    } else {
+        None
+    };
+
+    let (mut websocket, _) = tokio_tungstenite::connect_async_tls_with_config(
+        &config.control_url,
+        None,
+        false,
+        connector,
+    )
+    .await?;
 
     // send our Client Hello message
     let client_hello = match config.secret_key.clone() {

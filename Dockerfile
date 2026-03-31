@@ -20,7 +20,7 @@ COPY --from=builder /volume/target/x86_64-unknown-linux-musl/release/neutun_serv
 EXPOSE 8080
 # ctrl svc
 EXPOSE 5000
-# net svc
-EXPOSE 10002
+# net svc (gossip/internal, default NET_PORT=6000)
+EXPOSE 6000
 
 ENTRYPOINT ["/neutun_server"]

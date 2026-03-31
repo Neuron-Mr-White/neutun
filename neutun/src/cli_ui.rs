@@ -38,8 +38,10 @@ impl CliInterface {
     }
 
     pub fn did_connect(&self, sub_domain: &str, full_hostname: &str, taken_domains: &str) {
-        self.spinner
-            .finish_with_message("Success! Remote tunnel is now open.\n".green().as_ref());
+        self.spinner.finish_with_message(format!(
+            "{}",
+            "Success! Remote tunnel is now open.\n".green()
+        ));
 
         if !self.config.first_run {
             return;
@@ -94,13 +96,13 @@ impl CliInterface {
 
 fn new_spinner(message: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
-    pb.enable_steady_tick(150);
+    pb.enable_steady_tick(std::time::Duration::from_millis(150));
     pb.set_style(
         ProgressStyle::default_spinner()
-            // .tick_strings(&["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"])
             .tick_strings(&["🌎", "🌍", "🌏"])
-            .template("{spinner:.blue} {msg}"),
+            .template("{spinner:.blue} {msg}")
+            .expect("Invalid progress bar template"),
     );
-    pb.set_message(message);
+    pb.set_message(message.to_string());
     pb
 }

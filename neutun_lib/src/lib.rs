@@ -1,17 +1,17 @@
+use base64::{engine::general_purpose, Engine as _};
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
-use base64::{Engine as _, engine::general_purpose};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(transparent)]
 pub struct SecretKey(pub String);
 impl SecretKey {
     pub fn generate() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         Self(
             std::iter::repeat(())
-                .map(|_| rng.sample(rand::distributions::Alphanumeric))
+                .map(|_| rng.sample(rand::distr::Alphanumeric))
                 .map(char::from)
                 .take(22)
                 .collect::<String>(),
@@ -19,9 +19,9 @@ impl SecretKey {
     }
 
     pub fn client_id(&self) -> ClientId {
-        ClientId(general_purpose::STANDARD.encode(
-            &sha2::Sha256::digest(self.0.as_bytes()).to_vec(),
-        ))
+        ClientId(
+            general_purpose::STANDARD.encode(&sha2::Sha256::digest(self.0.as_bytes()).to_vec()),
+        )
     }
 }
 
@@ -46,9 +46,9 @@ pub enum ServerHello {
 impl ServerHello {
     #[allow(unused)]
     pub fn random_domain() -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         std::iter::repeat(())
-            .map(|_| rng.sample(rand::distributions::Alphanumeric))
+            .map(|_| rng.sample(rand::distr::Alphanumeric))
             .map(char::from)
             .take(8)
             .collect::<String>()
@@ -74,7 +74,12 @@ pub struct ClientHello {
 }
 
 impl ClientHello {
-    pub fn generate(sub_domain: Option<String>, domain: Option<String>, typ: ClientType, wildcard: bool) -> Self {
+    pub fn generate(
+        sub_domain: Option<String>,
+        domain: Option<String>,
+        typ: ClientType,
+        wildcard: bool,
+    ) -> Self {
         ClientHello {
             id: ClientId::generate(),
             client_type: typ,
@@ -115,14 +120,14 @@ impl std::fmt::Display for ClientId {
 impl ClientId {
     pub fn generate() -> Self {
         let mut id = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut id);
+        rand::rng().fill_bytes(&mut id);
         ClientId(general_purpose::URL_SAFE_NO_PAD.encode(&id))
     }
 
     pub fn safe_id(self) -> ClientId {
-        ClientId(general_purpose::STANDARD.encode(
-            &sha2::Sha256::digest(self.0.as_bytes()).to_vec(),
-        ))
+        ClientId(
+            general_purpose::STANDARD.encode(&sha2::Sha256::digest(self.0.as_bytes()).to_vec()),
+        )
     }
 }
 
@@ -132,7 +137,7 @@ pub struct StreamId([u8; 8]);
 impl StreamId {
     pub fn generate() -> StreamId {
         let mut id = [0u8; 8];
-        rand::thread_rng().fill_bytes(&mut id);
+        rand::rng().fill_bytes(&mut id);
         StreamId(id)
     }
 

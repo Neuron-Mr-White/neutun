@@ -4,7 +4,7 @@ use super::*;
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures::StreamExt;
-use hyper::Uri;
+use warp::http::Uri;
 use std::net::SocketAddr;
 use std::vec;
 use uuid::Uuid;
@@ -42,13 +42,13 @@ lazy_static::lazy_static! {
     pub static ref REQUESTS:Arc<RwLock<HashMap<String, Request>>> = Arc::new(RwLock::new(HashMap::new()));
 }
 
-pub fn start_introspect_web_dashboard(config: Config) -> SocketAddr {
+pub async fn start_introspect_web_dashboard(config: Config) -> SocketAddr {
     let dash_addr = SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 0], config.dashboard_port));
 
     let css = warp::get().and(warp::path!("static" / "css" / "styles.css").map(|| {
-        let mut res = warp::http::Response::new(warp::hyper::Body::from(include_str!(
-            "../../static/css/styles.css"
-        )));
+        let mut res = warp::http::Response::new(
+            include_str!("../../static/css/styles.css").to_string(),
+        );
         res.headers_mut().insert(
             warp::http::header::CONTENT_TYPE,
             warp::http::header::HeaderValue::from_static("text/css"),
@@ -56,9 +56,8 @@ pub fn start_introspect_web_dashboard(config: Config) -> SocketAddr {
         res
     }));
     let logo = warp::get().and(warp::path!("static" / "img" / "logo.png").map(|| {
-        let mut res = warp::http::Response::new(warp::hyper::Body::from(
-            include_bytes!("../../static/img/logo.png").to_vec(),
-        ));
+        let body: Vec<u8> = include_bytes!("../../static/img/logo.png").to_vec();
+        let mut res = warp::http::Response::new(body);
         res.headers_mut().insert(
             warp::http::header::CONTENT_TYPE,
             warp::http::header::HeaderValue::from_static("image/png"),
@@ -80,9 +79,14 @@ pub fn start_introspect_web_dashboard(config: Config) -> SocketAddr {
         .or(css)
         .or(logo);
 
-    let (web_explorer_address, explorer_server) =
-        warp::serve(web_explorer).bind_ephemeral(dash_addr);
-    tokio::spawn(explorer_server);
+    let listener = tokio::net::TcpListener::bind(dash_addr)
+        .await
+        .expect("failed to bind introspect dashboard address");
+    let web_explorer_address = listener
+        .local_addr()
+        .expect("failed to get introspect dashboard address");
+    let server = warp::serve(web_explorer).incoming(listener);
+    tokio::spawn(server.run());
 
     web_explorer_address
 }
