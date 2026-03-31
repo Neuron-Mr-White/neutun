@@ -18,10 +18,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Publish neutun_lib
-        run: cargo publish -p neutun_lib
+        run: |
+          echo "::group::Publishing neutun_lib"
+          cargo publish -p neutun_lib || {
+            echo "::error::Failed to publish neutun_lib. Check that CARGO_REGISTRY_TOKEN is valid."
+            exit 1
+          }
+          echo "::endgroup::"
 
       - name: Wait for crates.io index update
         run: sleep 30
 
       - name: Publish neutun
-        run: cargo publish -p neutun
+        run: |
+          echo "::group::Publishing neutun"
+          cargo publish -p neutun || {
+            echo "::error::Failed to publish neutun. The crates.io index may not have updated yet."
+            exit 1
+          }
+          echo "::endgroup::"
