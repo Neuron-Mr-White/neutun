@@ -91,19 +91,104 @@ async fn main() {
         None => {}
     }
 
-    // No subcommand: start tunnel directly if -p given, else interactive mode (TODO: Task 3)
-    let mut config = match Config::from_opts(&opts) {
-        Ok(c) => c,
-        Err(_) => return,
-    };
+    // No subcommand: if -p is given start tunnel directly, else interactive mode
+    if opts.port.is_some() {
+        // Direct tunnel start
+        if opts.daemon {
+            // Start as daemon — spawn detached child
+            let extra_args: Vec<String> = std::env::args().skip(1).collect();
+            // Safe: we checked opts.port.is_some() above
+            let port = opts.port.expect("port checked above");
+            crate::daemon::start_daemon(port, &opts.sub_domain, extra_args);
+            return;
+        }
+        let config = match Config::from_opts(&opts) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        run_tunnel(config).await;
+    } else {
+        // Interactive mode
+        use crate::interactive::{run_interactive, InteractiveResult};
+        match run_interactive() {
+            InteractiveResult::StartTunnel(params) => {
+                let saved = crate::saved_config::load_config().unwrap_or_default();
+                let config = build_config_from_interactive(params, &saved);
+                run_tunnel(config).await;
+            }
+            InteractiveResult::RestoreSession(session, run_as_daemon) => {
+                if run_as_daemon {
+                    let extra_args: Vec<String> = std::env::args().skip(1).collect();
+                    crate::daemon::start_daemon(session.port, &session.subdomain, extra_args);
+                    return;
+                }
+                let config = match Config::from_opts_and_session(&opts, Some(&session)) {
+                    Ok(c) => c,
+                    Err(_) => return,
+                };
+                run_tunnel(config).await;
+            }
+            InteractiveResult::JustOnboarded => {
+                // User just finished onboarding — done
+            }
+        }
+    }
+}
 
+fn build_config_from_interactive(
+    params: crate::interactive::InteractiveParams,
+    saved: &crate::saved_config::NeutunConfig,
+) -> Config {
+    use std::net::ToSocketAddrs;
+
+    let effective_ctrl_host = saved.effective_ctrl_host();
+    let tls_off = !saved.tls;
+    let scheme = if tls_off { "ws" } else { "wss" };
+    let http_scheme = if tls_off { "http" } else { "https" };
+    let control_url = format!(
+        "{}://{}:{}/wormhole",
+        scheme, effective_ctrl_host, saved.ctrl_port
+    );
+    let control_api_url = format!(
+        "{}://{}:{}",
+        http_scheme, effective_ctrl_host, saved.ctrl_port
+    );
+
+    let local_addr = ("localhost", params.port)
+        .to_socket_addrs()
+        .unwrap_or(vec![].into_iter())
+        .next()
+        .expect("Failed to resolve localhost address");
+
+    Config {
+        client_id: ClientId::generate(),
+        local_host: "localhost".to_string(),
+        use_tls: params.use_tls,
+        control_url,
+        control_api_url,
+        host: saved.host.clone(),
+        local_port: params.port,
+        local_addr,
+        sub_domain: params.subdomain,
+        domain: params.domain.or(Some(saved.host.clone())),
+        dashboard_port: 0,
+        verbose: false,
+        secret_key: params.key.map(SecretKey),
+        control_tls_off: tls_off,
+        first_run: true,
+        wildcard: params.wildcard,
+    }
+}
+
+/// Run the tunnel loop. Handles reconnects until fatal error.
+async fn run_tunnel(mut config: Config) {
     update::check().await;
 
     let introspect_dash_addr = introspect::start_introspect_web_dashboard(config.clone()).await;
 
     loop {
         let (restart_tx, mut restart_rx) = unbounded();
-        let wormhole = run_wormhole(config.clone(), introspect_dash_addr.clone(), restart_tx);
+        let wormhole = run_wormhole(config.clone(), introspect_dash_addr, restart_tx);
         let result = futures::future::select(Box::pin(wormhole), restart_rx.next()).await;
         config.first_run = false;
 
@@ -151,22 +236,159 @@ async fn main() {
 }
 
 fn handle_config_action(action: &ConfigAction) {
-    eprintln!("Config action: {:?} — not yet implemented", action);
+    use crate::saved_config::{load_config, save_config};
+
+    match action {
+        ConfigAction::Show => {
+            match load_config() {
+                Some(c) => {
+                    println!("{}", "Current configuration:".green().bold());
+                    println!("  Host:         {}", c.host);
+                    println!("  Ctrl Host:    {}", c.effective_ctrl_host());
+                    println!("  Ctrl Port:    {}", c.ctrl_port);
+                    println!("  TLS:          {}", if c.tls { "on" } else { "off" });
+                    println!("  Default Port: {}", c.port);
+                    println!("  API Key:      {}", c.masked_key());
+                }
+                None => {
+                    eprintln!(
+                        "{}",
+                        "Not configured yet. Run 'neutun config onboard' first.".yellow()
+                    );
+                }
+            }
+        }
+        ConfigAction::Host { domain } => {
+            let mut config = load_config().unwrap_or_default();
+            config.host = domain.clone();
+            save_config(&config);
+            println!("Host set to: {}", domain.green());
+        }
+        ConfigAction::CtrlHost { host } => {
+            let mut config = load_config().unwrap_or_default();
+            config.ctrl_host = Some(host.clone());
+            save_config(&config);
+            println!("Control host set to: {}", host.green());
+        }
+        ConfigAction::CtrlPort { port } => {
+            let mut config = load_config().unwrap_or_default();
+            config.ctrl_port = *port;
+            save_config(&config);
+            println!("Control port set to: {}", port.to_string().green());
+        }
+        ConfigAction::Tls { status } => {
+            let mut config = load_config().unwrap_or_default();
+            let on = status.to_lowercase() == "on";
+            config.tls = on;
+            save_config(&config);
+            println!(
+                "TLS set to: {}",
+                if on { "on".green() } else { "off".yellow() }
+            );
+        }
+        ConfigAction::Port { port } => {
+            let mut config = load_config().unwrap_or_default();
+            config.port = *port;
+            save_config(&config);
+            println!("Default local port set to: {}", port.to_string().green());
+        }
+        ConfigAction::Key { key } => {
+            let mut config = load_config().unwrap_or_default();
+            config.key = Some(key.clone());
+            save_config(&config);
+            println!("{}", "API key saved successfully!".green());
+        }
+        ConfigAction::Onboard => {
+            crate::interactive::run_onboarding();
+        }
+    }
 }
 
 async fn handle_saves_action(action: &SavesAction) {
-    eprintln!("Saves action: {:?} — not yet implemented", action);
+    use crate::saved_config::{delete_session, list_sessions, load_last_session, load_session, save_session};
+
+    match action {
+        SavesAction::Ls => {
+            let sessions = list_sessions();
+            if sessions.is_empty() {
+                println!("{}", "No saved sessions.".yellow());
+                return;
+            }
+            println!("{}", "Saved sessions:".green().bold());
+            for s in &sessions {
+                let sub = s.subdomain.as_deref().unwrap_or("(random)");
+                println!(
+                    "  {}  (port {}, subdomain {})",
+                    s.name.cyan(),
+                    s.port,
+                    sub
+                );
+            }
+        }
+        SavesAction::Add { name } => {
+            match load_last_session() {
+                Some(mut session) => {
+                    session.name = name.clone();
+                    save_session(&session);
+                    println!("Session '{}' saved successfully!", name.green());
+                }
+                None => {
+                    eprintln!(
+                        "{}",
+                        "No previous tunnel session found. Start a tunnel first, then save it."
+                            .yellow()
+                    );
+                }
+            }
+        }
+        SavesAction::Restore { name, daemon: run_as_daemon } => {
+            match load_session(name) {
+                Some(session) => {
+                    println!("Restoring session '{}'...", name.green());
+                    if *run_as_daemon {
+                        let extra_args: Vec<String> = std::env::args().skip(1).collect();
+                        crate::daemon::start_daemon(
+                            session.port,
+                            &session.subdomain,
+                            extra_args,
+                        );
+                        return;
+                    }
+                    let opts = Opts::parse();
+                    let config = match Config::from_opts_and_session(&opts, Some(&session)) {
+                        Ok(c) => c,
+                        Err(_) => return,
+                    };
+                    run_tunnel(config).await;
+                }
+                None => {
+                    eprintln!("{}", format!("Session '{}' not found.", name).red());
+                }
+            }
+        }
+        SavesAction::Rm { name } => {
+            if delete_session(name) {
+                println!("Session '{}' deleted.", name.green());
+            } else {
+                eprintln!("{}", format!("Session '{}' not found.", name).red());
+            }
+        }
+    }
 }
 
 fn handle_daemon_action(action: &DaemonAction) {
-    eprintln!("Daemon action: {:?} — not yet implemented", action);
+    match action {
+        DaemonAction::Ls => crate::daemon::list_daemons(),
+        DaemonAction::Stop { pid } => crate::daemon::stop_daemon(*pid),
+        DaemonAction::StopAll => crate::daemon::stop_all_daemons(),
+    }
 }
 
 async fn handle_server_action(action: &ServerAction) {
-    // Temporary: build a minimal config for API calls using defaults
-    let host = DEFAULT_CONTROL_HOST;
-    let port = DEFAULT_CONTROL_PORT;
-    let api_url = format!("https://{}:{}", host, port);
+    let saved = crate::saved_config::load_config().unwrap_or_default();
+    let effective_ctrl_host = saved.effective_ctrl_host();
+    let scheme = if saved.tls { "https" } else { "http" };
+    let api_url = format!("{}://{}:{}", scheme, effective_ctrl_host, saved.ctrl_port);
     match action {
         ServerAction::Domains => fetch_and_print_domains(&api_url).await,
         ServerAction::Taken => fetch_and_print_taken_domains(&api_url).await,
@@ -234,6 +456,29 @@ async fn run_wormhole(
         .unwrap_or_default();
 
     interface.did_connect(&sub_domain, &hostname, &taken_domains);
+
+    // Save last session after successful connection (used by `neutun saves add`)
+    {
+        let session = crate::saved_config::SessionConfig {
+            name: "last".to_string(),
+            port: config.local_port,
+            subdomain: config.sub_domain.clone(),
+            domain: config.domain.clone().unwrap_or_else(|| config.host.clone()),
+            key: config.secret_key.as_ref().map(|k| k.0.clone()),
+            use_tls: config.use_tls,
+            wildcard: config.wildcard,
+            local_host: config.local_host.clone(),
+            ctrl_host: None,
+            ctrl_port: 0,
+            tls: !config.control_tls_off,
+            dashboard_port: if config.dashboard_port == 0 {
+                None
+            } else {
+                Some(config.dashboard_port)
+            },
+        };
+        crate::saved_config::save_last_session(&session);
+    }
 
     // split reading and writing
     let (mut ws_sink, mut ws_stream) = websocket.split();

@@ -4,6 +4,7 @@ use super::*;
 use clap::{Parser, Subcommand};
 
 pub(crate) const DEFAULT_HOST: &str = "neutun.dev";
+#[allow(dead_code)]
 pub(crate) const DEFAULT_CONTROL_HOST: &str = "wormhole.neutun.dev";
 pub(crate) const DEFAULT_CONTROL_PORT: u16 = 5000;
 
@@ -199,12 +200,14 @@ pub struct Config {
 impl Config {
     /// Build Config from parsed opts + config.json (no env vars).
     /// CLI flags override config.json values.
+    #[allow(clippy::result_unit_err)]
     pub fn from_opts(opts: &Opts) -> Result<Config, ()> {
         Self::from_opts_and_session(opts, None)
     }
 
     /// Build Config from opts with an optional saved session override.
     /// Priority: CLI flags > session config > config.json defaults.
+    #[allow(clippy::result_unit_err)]
     pub fn from_opts_and_session(
         opts: &Opts,
         session: Option<&crate::saved_config::SessionConfig>,

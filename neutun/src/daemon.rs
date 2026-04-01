@@ -137,8 +137,8 @@ pub fn list_daemons() {
 
     println!("{}", "Running daemons:".green().bold());
     println!(
-        "  {:>8}  {:>6}  {:>20}  {}",
-        "PID", "PORT", "SUBDOMAIN", "STARTED"
+        "  {:>8}  {:>6}  {:>20}  STARTED",
+        "PID", "PORT", "SUBDOMAIN"
     );
     println!("  {}", "-".repeat(56));
     for d in &daemons {
