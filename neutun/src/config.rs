@@ -197,11 +197,36 @@ pub struct Config {
 }
 
 impl Config {
-    /// Build Config from parsed opts. No env vars — config.json will be added in a later task.
+    /// Build Config from parsed opts + config.json (no env vars).
+    /// CLI flags override config.json values.
     pub fn from_opts(opts: &Opts) -> Result<Config, ()> {
-        let port = opts.port.unwrap_or(8000);
+        Self::from_opts_and_session(opts, None)
+    }
 
-        let local_addr = match (opts.local_host.as_str(), port)
+    /// Build Config from opts with an optional saved session override.
+    /// Priority: CLI flags > session config > config.json defaults.
+    pub fn from_opts_and_session(
+        opts: &Opts,
+        session: Option<&crate::saved_config::SessionConfig>,
+    ) -> Result<Config, ()> {
+        // Load config.json (falls back to defaults if not present)
+        let saved = crate::saved_config::load_config().unwrap_or_default();
+
+        // Resolve local port: CLI > session > config.json default
+        let port = opts
+            .port
+            .unwrap_or_else(|| session.map(|s| s.port).unwrap_or(saved.port));
+
+        // Resolve local host: CLI (non-default) > session > "localhost"
+        let local_host = if opts.local_host != "localhost" {
+            opts.local_host.clone()
+        } else if let Some(s) = session {
+            s.local_host.clone()
+        } else {
+            opts.local_host.clone()
+        };
+
+        let local_addr = match (local_host.as_str(), port)
             .to_socket_addrs()
             .unwrap_or(vec![].into_iter())
             .next()
@@ -210,42 +235,75 @@ impl Config {
             None => {
                 error!(
                     "An invalid local address was specified: {}:{}",
-                    opts.local_host.as_str(),
-                    port,
+                    local_host, port,
                 );
                 return Err(());
             }
         };
 
-        let host = DEFAULT_HOST.to_string();
-        let control_host = DEFAULT_CONTROL_HOST.to_string();
-        let control_port = DEFAULT_CONTROL_PORT;
+        // Resolve control settings: session > config.json
+        let (ctrl_host_opt, ctrl_port, tls) = if let Some(s) = session {
+            (s.ctrl_host.clone(), s.ctrl_port, s.tls)
+        } else {
+            (saved.ctrl_host.clone(), saved.ctrl_port, saved.tls)
+        };
 
-        let scheme = "wss";
-        let http_scheme = "https";
+        let effective_ctrl_host =
+            ctrl_host_opt.unwrap_or_else(|| format!("wormhole.{}", saved.host));
+        let tls_off = !tls;
 
-        let control_url = format!("{}://{}:{}/wormhole", scheme, control_host, control_port);
-        let control_api_url = format!("{}://{}:{}", http_scheme, control_host, control_port);
+        let scheme = if tls_off { "ws" } else { "wss" };
+        let http_scheme = if tls_off { "http" } else { "https" };
+
+        let control_url = format!(
+            "{}://{}:{}/wormhole",
+            scheme, effective_ctrl_host, ctrl_port
+        );
+        let control_api_url = format!("{}://{}:{}", http_scheme, effective_ctrl_host, ctrl_port);
 
         info!("Control Server URL: {}", &control_url);
 
+        // Resolve tunnel-specific fields: CLI > session > saved key
+        let sub_domain = opts
+            .sub_domain
+            .clone()
+            .or_else(|| session.and_then(|s| s.subdomain.clone()));
+
+        let domain = opts
+            .domain
+            .clone()
+            .or_else(|| session.map(|s| s.domain.clone()));
+
+        let secret_key = opts
+            .key
+            .clone()
+            .or_else(|| session.and_then(|s| s.key.clone()))
+            .or_else(|| saved.key.clone());
+
+        let use_tls = opts.use_tls || session.map(|s| s.use_tls).unwrap_or(false);
+        let wildcard = opts.wildcard || session.map(|s| s.wildcard).unwrap_or(false);
+
+        let dashboard_port = opts
+            .dashboard_port
+            .unwrap_or_else(|| session.and_then(|s| s.dashboard_port).unwrap_or(0));
+
         Ok(Config {
             client_id: ClientId::generate(),
-            local_host: opts.local_host.clone(),
-            use_tls: opts.use_tls,
+            local_host,
+            use_tls,
             control_url,
             control_api_url,
-            host,
+            host: saved.host.clone(),
             local_port: port,
             local_addr,
-            sub_domain: opts.sub_domain.clone(),
-            domain: opts.domain.clone(),
-            dashboard_port: opts.dashboard_port.unwrap_or(0),
+            sub_domain,
+            domain,
+            dashboard_port,
             verbose: opts.verbose,
-            secret_key: opts.key.as_ref().map(|k| SecretKey(k.clone())),
-            control_tls_off: false,
+            secret_key: secret_key.map(SecretKey),
+            control_tls_off: tls_off,
             first_run: true,
-            wildcard: opts.wildcard,
+            wildcard,
         })
     }
 
