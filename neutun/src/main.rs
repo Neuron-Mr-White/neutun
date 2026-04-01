@@ -17,6 +17,7 @@ mod config;
 mod error;
 mod introspect;
 mod local;
+mod saved_config;
 mod update;
 pub use self::error::*;
 
