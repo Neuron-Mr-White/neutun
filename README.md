@@ -126,11 +126,16 @@ sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin 
     | `MASTER_SIG_KEY` | Key for signing reconnect tokens. Defaults to ephemeral if unset. | *(Ephemeral)* |
 
     #### Client
-    | Variable | Description | Default |
+
+    Client configuration is managed via `neutun config` commands and stored in `~/.neutun/config.json`. Environment variables are no longer used.
+
+    | Command | Description | Default |
     | :--- | :--- | :--- |
-    | `CTRL_HOST` | The hostname of the control server. | `neutun.dev` |
-    | `CTRL_PORT` | The port of the control server. | `5000` |
-    | `CTRL_TLS_OFF` | Set to `1`, `true`, or `on` to disable TLS (use `ws://` instead of `wss://`). | `false` (TLS enabled) |
+    | `neutun config host <domain>` | Set the base domain for tunnels. | `neutun.dev` |
+    | `neutun config ctrl-host <host>` | Set the control server hostname (optional, derived from host if unset). | `wormhole.<host>` |
+    | `neutun config ctrl-port <port>` | Set the control server port. | `5000` |
+    | `neutun config tls <on\|off>` | Enable/disable TLS for the control connection. | `on` |
+    | `neutun config key <key>` | Set the API authentication key. | *(none)* |
 
 4.  **Run with Docker Compose:**
 
@@ -354,7 +359,7 @@ To run `neutun` from any terminal, you should add it to your system's PATH.
         sudo mv neutun /usr/local/bin/
         sudo chmod +x /usr/local/bin/neutun
         ```
-    3.  Verify installation: `neutun --version`
+    3.  Verify installation: `neutun -v`
 
 *   **Windows:**
     1.  Download `neutun-windows.exe`.
@@ -362,7 +367,7 @@ To run `neutun` from any terminal, you should add it to your system's PATH.
     3.  Search for "Edit the system environment variables" in the Start menu.
     4.  Click "Environment Variables", then find the `Path` variable under "System variables" (or "User variables") and click "Edit".
     5.  Click "New" and add the path to your folder (e.g., `C:\Tools`).
-    6.  Click OK to save. Open a new Command Prompt or PowerShell and type `neutun --version`.
+    6.  Click OK to save. Open a new Command Prompt or PowerShell and type `neutun -v`.
 
 #### Option 3: Build from Source
 
@@ -375,59 +380,104 @@ cargo build --release --bin neutun
 
 ### Usage
 
-You need to tell the client where your server is.
+First, run the onboarding wizard to configure your connection to the server:
 
 ```bash
-# Point to your self-hosted server
-export CTRL_HOST="ws.<YOUR_DOMAIN>"  # e.g., ws.example.com (if using the Nginx config above)
-# OR if connecting directly without Nginx proxy for control:
-# export CTRL_HOST="<YOUR_DOMAIN>"
-# export CTRL_PORT=5000
+neutun config onboard
+```
 
-export CTRL_TLS_OFF=0                # Set to 0 if using HTTPS/WSS (via Nginx), 1 if plain HTTP/WS
+This will prompt you for your domain, control server settings, and API key. Configuration is saved to `~/.neutun/config.json`. Environment variables (`CTRL_HOST`, `CTRL_PORT`, `CTRL_TLS_OFF`) are no longer used — all configuration is managed via `neutun config` commands.
 
-# Run the client
-# -p: Local port to expose (e.g., your web app running on 8000)
-# -k: The MASTER_API_KEY you generated on the server
-# -s: Desired subdomain
+Then start a tunnel:
+
+```bash
+# Start tunnel on local port 8000
+neutun -p 8000
+
+# Start tunnel with specific subdomain and API key
 neutun -p 8000 -k <YOUR_MASTER_API_KEY> -s myservice
+
+# Or just run neutun for interactive mode
+neutun
+```
+
+### Configuration Commands
+
+```bash
+neutun config show                   # Show current configuration
+neutun config host <domain>          # Set base domain (e.g., example.com)
+neutun config ctrl-host <host>       # Set control server host (e.g., ws.example.com)
+neutun config ctrl-port <port>       # Set control server port (default: 5000)
+neutun config tls <on|off>           # Enable/disable TLS for control connection
+neutun config port <port>            # Set default local forwarding port
+neutun config key <key>              # Set API authentication key
+neutun config onboard                # Re-run interactive onboarding
+```
+
+### Saved Sessions
+
+```bash
+neutun saves add myapp               # Save last tunnel config as 'myapp'
+neutun saves ls                      # List saved sessions
+neutun saves restore myapp           # Restore and run 'myapp' session
+neutun saves restore myapp --daemon  # Restore 'myapp' as background daemon
+neutun saves rm myapp                # Delete saved session
+```
+
+### Daemon Management
+
+```bash
+neutun -p 8000 -s myapp --daemon     # Start tunnel as background daemon
+neutun daemon ls                     # List running daemons
+neutun daemon stop <pid>             # Stop a specific daemon
+neutun daemon stop-all               # Stop all daemons
+```
+
+### Server Info
+
+```bash
+neutun server domains                # List available domains
+neutun server taken                  # List taken subdomains
 ```
 
 ### Client Help
 ```
-neutun 1.0.6
-Command line arguments
+expose your local web server to the internet with a public url
 
-USAGE:
-    neutun [FLAGS] [OPTIONS] [SUBCOMMAND]
+Usage: neutun [OPTIONS] [COMMAND]
 
-FLAGS:
-    -h, --help        Prints help information
-    -t, --use-tls     Sets the protocol for local forwarding (i.e. https://localhost) to forward incoming tunnel traffic
-                      to
-    -V, --version     Prints version information
-    -v, --verbose     A level of verbosity, and can be used multiple times
-    -w, --wildcard    Allow listen to wildcard sub-domains
+Commands:
+  config  Manage configuration settings
+  saves   Manage saved tunnel profiles
+  daemon  Manage background daemon processes
+  server  Query server information
+  help    Print this message or the help of the given subcommand(s)
 
-OPTIONS:
-        --dashboard-port <dashboard-port>    Sets the address of the local introspection dashboard
-    -d, --domain <domain>                    Specify the domain for this tunnel
-    -k, --key <key>                          Sets an API authentication key to use for this tunnel
-        --host <local-host>                  Sets the HOST (i.e. localhost) to forward incoming tunnel traffic to
-                                             [default: localhost]
-    -p, --port <port>                        Sets the port to forward incoming tunnel traffic to on the target host
-                                             [default: 8000]
-    -s, --subdomain <sub-domain>             Specify a sub-domain for this tunnel
-
-SUBCOMMANDS:
-    daemon           Run neutun as a background daemon
-    domains          List available domains on the server
-    help             Prints this message or the help of the given subcommand(s)
-    onboard          Interactive onboarding to set up tunnel configuration
-    set-auth         Store the API Authentication key
-    set-domain       Set the default domain for tunnels
-    set-port         Set the default local port for tunnels
-    taken-domains    List currently taken subdomains/wildcards
+Options:
+  -v, --version
+          Print version information
+  -k, --key <KEY>
+          Sets an API authentication key to use for this tunnel
+  -s, --subdomain <SUB_DOMAIN>
+          Specify a sub-domain for this tunnel
+  -d, --domain <DOMAIN>
+          Specify the domain for this tunnel
+      --host <LOCAL_HOST>
+          Sets the HOST (i.e. localhost) to forward incoming tunnel traffic to [default: localhost]
+  -t, --use-tls
+          Sets the protocol for local forwarding (i.e. https://localhost)
+  -p, --port <PORT>
+          Sets the port to forward incoming tunnel traffic to on the target host
+      --dashboard-port <DASHBOARD_PORT>
+          Sets the address of the local introspection dashboard
+  -w, --wildcard
+          Allow listen to wildcard sub-domains
+  -D, --daemon
+          Run as a background daemon
+      --verbose
+          Enable verbose/debug logging
+  -h, --help
+          Print help
 ```
 
 ### Subdomains
