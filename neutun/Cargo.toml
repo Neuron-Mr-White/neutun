@@ -1,7 +1,7 @@
 [package]
 name = "neutun"
 description = "expose your local web server to the internet with a public url"
-version = "1.0.6"
+version = "1.0.8"
 authors = ["Neutun Developers"]
 edition = "2018"
 license = "MIT"
@@ -13,7 +13,7 @@ name = "neutun"
 path = "src/main.rs"
 
 [dependencies]
-neutun_lib = { version = "1.0.6", path = "../neutun_lib" }
+neutun_lib = { version = "1.0.8", path = "../neutun_lib" }
 tokio = { version = "1.50", features = ["full"] }
 futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }

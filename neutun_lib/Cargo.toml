@@ -1,7 +1,7 @@
 [package]
 name = "neutun_lib"
 description = "expose your local web server to the internet with a public url"
-version = "1.0.6"
+version = "1.0.8"
 authors = ["Neutun Developers"]
 edition = "2018"
 license = "MIT"
