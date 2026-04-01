@@ -15,6 +15,7 @@ use std::sync::{Arc, RwLock};
 mod cli_ui;
 mod config;
 mod error;
+mod interactive;
 mod introspect;
 mod local;
 mod saved_config;
