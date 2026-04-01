@@ -9,7 +9,6 @@ use human_panic::setup_panic;
 pub use log::{debug, error, info, warn};
 
 use std::collections::HashMap;
-use std::env;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 
@@ -25,6 +24,7 @@ pub use config::*;
 pub use neutun_lib::*;
 
 use crate::cli_ui::CliInterface;
+use clap::Parser;
 use colored::Colorize;
 use futures::future::Either;
 use std::time::Duration;
@@ -46,29 +46,53 @@ pub enum StreamMessage {
 #[tokio::main]
 async fn main() {
     // Install the ring CryptoProvider for rustls before any TLS operations.
-    // This prevents panics on Windows where aws-lc-rs (the default provider)
-    // may fail to load its native library at runtime.
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls CryptoProvider");
 
-    let mut config = match Config::get() {
-        Ok(config) => config,
-        Err(_) => return,
-    };
-
     setup_panic!();
 
-    // Check for subcommand
-    let opts = structopt::StructOpt::from_args();
-    if let Opts { command: Some(SubCommand::Domains), .. } = opts {
-        fetch_and_print_domains(&config).await;
+    // Parse CLI args once
+    let opts = Opts::parse();
+
+    // Handle version flag
+    if opts.print_version {
+        println!("neutun {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    if let Opts { command: Some(SubCommand::TakenDomains), .. } = opts {
-        fetch_and_print_taken_domains(&config).await;
-        return;
+
+    // Set up logging
+    if opts.verbose {
+        std::env::set_var("RUST_LOG", "neutun=debug");
     }
+    pretty_env_logger::init();
+
+    // Dispatch subcommands
+    match &opts.command {
+        Some(SubCommand::Config { action }) => {
+            handle_config_action(action);
+            return;
+        }
+        Some(SubCommand::Saves { action }) => {
+            handle_saves_action(action).await;
+            return;
+        }
+        Some(SubCommand::Daemon { action }) => {
+            handle_daemon_action(action);
+            return;
+        }
+        Some(SubCommand::Server { action }) => {
+            handle_server_action(action).await;
+            return;
+        }
+        None => {}
+    }
+
+    // No subcommand: start tunnel directly if -p given, else interactive mode (TODO: Task 3)
+    let mut config = match Config::from_opts(&opts) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
 
     update::check().await;
 
@@ -123,8 +147,31 @@ async fn main() {
     }
 }
 
-async fn fetch_and_print_domains(config: &Config) {
-    let url = format!("{}/api/domains", config.control_api_url);
+fn handle_config_action(action: &ConfigAction) {
+    eprintln!("Config action: {:?} — not yet implemented", action);
+}
+
+async fn handle_saves_action(action: &SavesAction) {
+    eprintln!("Saves action: {:?} — not yet implemented", action);
+}
+
+fn handle_daemon_action(action: &DaemonAction) {
+    eprintln!("Daemon action: {:?} — not yet implemented", action);
+}
+
+async fn handle_server_action(action: &ServerAction) {
+    // Temporary: build a minimal config for API calls using defaults
+    let host = DEFAULT_CONTROL_HOST;
+    let port = DEFAULT_CONTROL_PORT;
+    let api_url = format!("https://{}:{}", host, port);
+    match action {
+        ServerAction::Domains => fetch_and_print_domains(&api_url).await,
+        ServerAction::Taken => fetch_and_print_taken_domains(&api_url).await,
+    }
+}
+
+async fn fetch_and_print_domains(api_url: &str) {
+    let url = format!("{}/api/domains", api_url);
     match reqwest::get(&url).await {
         Ok(res) => {
             if let Ok(domains) = res.json::<Vec<String>>().await {
@@ -135,15 +182,15 @@ async fn fetch_and_print_domains(config: &Config) {
             } else {
                 eprintln!("{}", "Failed to parse domains from server.".red());
             }
-        },
+        }
         Err(e) => {
-             eprintln!("{} {}", "Failed to fetch domains:".red(), e);
+            eprintln!("{} {}", "Failed to fetch domains:".red(), e);
         }
     }
 }
 
-async fn fetch_and_print_taken_domains(config: &Config) {
-    let url = format!("{}/api/taken", config.control_api_url);
+async fn fetch_and_print_taken_domains(api_url: &str) {
+    let url = format!("{}/api/taken", api_url);
     match reqwest::get(&url).await {
         Ok(res) => {
             if let Ok(taken) = res.json::<Vec<String>>().await {
@@ -152,9 +199,9 @@ async fn fetch_and_print_taken_domains(config: &Config) {
                     println!(" - {}", t);
                 }
             } else {
-                 eprintln!("{}", "Failed to parse taken domains from server.".red());
+                eprintln!("{}", "Failed to parse taken domains from server.".red());
             }
-        },
+        }
         Err(e) => {
             eprintln!("{} {}", "Failed to fetch taken domains:".red(), e);
         }
